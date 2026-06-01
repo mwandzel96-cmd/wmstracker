@@ -1255,50 +1255,47 @@ function renderHC(){
     const effectiveHC=Math.round(hc+traineeEff);
     // zap > 0 = surplus (too many people), zap < 0 = deficit (too few)
     const zap=effectiveHC-needed;
-    let rec=null;
-    if(i+3<weeks.length){
-      const futNeeded=calcWeek(weeks[i+3].days).totalHC;
-      // Project HC 3 weeks out: current HC + trainees graduating, minus attrition
-      let futHC=hc;
-      const futTrainees=[...trainees];
-      for(let j=0;j<3;j++){
-        // Age trainees
-        const grad=futTrainees.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
-        futTrainees.forEach(t=>t.weeksLeft--);
-        const remaining=futTrainees.filter(t=>t.weeksLeft>0);
-        futHC+=grad;
-        // Attrition
-        futHC=usePercent&&avgRot!=null?Math.round(futHC*(1-avgRot)):Math.max(0,futHC-rotFixed);
-        // Trainee effective contribution (those still in ramp)
+    // Project HC forward k weeks from current state
+    function projFwd(startHC, startTrainees, k){
+      let ph=startHC;
+      const pt=startTrainees.map(t=>({...t}));
+      for(let j=0;j<k;j++){
+        const grad=pt.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
+        pt.forEach(t=>t.weeksLeft--);
+        ph+=grad;
+        ph=usePercent&&avgRot!=null?Math.round(ph*(1-avgRot)):Math.max(0,ph-rotFixed);
       }
-      // Trainee effective contribution in target week
-      const futTraineeEff=futTrainees.filter(t=>t.weeksLeft>0).reduce((sum,t)=>
+      const tEff=pt.filter(t=>t.weeksLeft>0).reduce((sum,t)=>
         sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
-      const futEffective=Math.round(futHC+futTraineeEff);
-      const gap=futNeeded-futEffective;
-      if(gap>10){
-        // Need more people in 3 weeks → suggest hiring now
-        rec=Math.ceil(gap/avgReal);
-      } else if(gap<-20){
-        // Would have surplus in 3 weeks — but only suggest reduction if
-        // no deficit expected in any of the next 6 weeks
-        let deficitSoon=false;
-        for(let k=1;k<=6&&i+k<weeks.length;k++){
-          const nearNeeded=calcWeek(weeks[i+k].days).totalHC;
-          let nearHC=hc;
-          const nearTrainees=[...trainees];
-          for(let j=0;j<k;j++){
-            const grad=nearTrainees.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
-            nearTrainees.forEach(t=>t.weeksLeft--);
-            nearHC+=grad;
-            nearHC=usePercent&&avgRot!=null?Math.round(nearHC*(1-avgRot)):Math.max(0,nearHC-rotFixed);
-          }
-          const nearEff=Math.round(nearHC+nearTrainees.filter(t=>t.weeksLeft>0).reduce((s,t)=>s+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0));
-          if(nearNeeded>nearEff+10){deficitSoon=true;break;}
-        }
-        if(!deficitSoon) rec=Math.round(gap); // safe to reduce
-      }
+      return {hc:ph,eff:Math.round(ph+tEff)};
     }
+
+    let rec=null;
+    // Scan next 1-6 weeks for worst upcoming deficit (without any new hires)
+    let worstDeficit=0, worstAt=0;
+    for(let k=1;k<=6&&i+k<weeks.length;k++){
+      const proj=projFwd(hc,trainees,k);
+      const futNeeded=calcWeek(weeks[i+k].days).totalHC;
+      const deficit=futNeeded-proj.eff; // positive = we're short
+      if(deficit>worstDeficit){worstDeficit=deficit;worstAt=k;}
+    }
+
+    if(worstDeficit>10){
+      // Upcoming deficit — suggest hiring now
+      // Trainees entering now: in week k they'll be at ramp efficiency
+      const rampEff=worstAt===1?.6:worstAt===2?.75:worstAt===3?.85:1.0;
+      rec=Math.ceil(worstDeficit/rampEff/avgReal);
+    } else if(zap>20){
+      // Currently surplus, no upcoming deficit — check if surplus persists 6 weeks
+      let allSurplus=true;
+      for(let k=1;k<=6&&i+k<weeks.length;k++){
+        const proj=projFwd(hc,trainees,k);
+        const futNeeded=calcWeek(weeks[i+k].days).totalHC;
+        if(proj.eff-futNeeded<20){allSurplus=false;break;}
+      }
+      if(allSurplus) rec=-(zap-10); // reduce by surplus minus small buffer
+    }
+
     rows.push({wkN,hc:Math.round(hc),effectiveHC,needed,zap,rec,avgReal,wkStart:weeks[i].start});
     // Advance state for next week
     trainees=trainees.map(t=>({...t,weeksLeft:t.weeksLeft-1})).filter(t=>t.weeksLeft>0);
@@ -1306,7 +1303,7 @@ function renderHC(){
     hc+=graduated; trainees=trainees.filter(t=>t.weeksLeft>0);
     // Apply attrition
     if(usePercent&&avgRot!=null) hc=Math.round(hc*(1-avgRot)); else hc=Math.max(0,hc-rotFixed);
-    // If we recommended hiring this week, add trainees to pipeline immediately
+    // New hires enter pipeline immediately after recommendation
     if(rec!=null&&rec>0) trainees.push({weeksLeft:3,count:rec});
   }
   let html=`<div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
