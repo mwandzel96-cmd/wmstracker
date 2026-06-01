@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WMS Workforce Planner · XPO1</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f5f7;--white:#fff;--border:rgba(0,0,0,.08);--border-s:rgba(0,0,0,.14);
+  --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow:0 4px 16px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);
+  --shadow-lg:0 12px 40px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.06);
+  --blue:#0071e3;--blue-l:#e8f0fe;--blue-d:#0051a2;
+  --green:#34c759;--green-l:#e8f8ed;
+  --red:#ff3b30;--red-l:#fff0ef;
+  --orange:#ff9500;--orange-l:#fff5e6;
+  --text:#1d1d1f;--text2:#6e6e73;--text3:#aeaeb2;
+  --r:12px;--rl:18px;--rs:8px;
+  --font:'Inter',-apple-system,sans-serif;
+}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* NAV */
+.nav{position:sticky;top:0;z-index:100;height:52px;background:rgba(255,255,255,.85);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:0}
+.nav-brand{font-size:15px;font-weight:700;color:var(--text);margin-right:28px;letter-spacing:-.3px;white-space:nowrap}
+.nav-brand span{color:var(--blue)}
+.nav-tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.nav-tabs::-webkit-scrollbar{display:none}
+.nav-tab{padding:6px 14px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap;transition:all .15s;border:none;background:none}
+.nav-tab:hover{color:var(--text);background:rgba(0,0,0,.05)}
+.nav-tab.active{color:var(--blue);background:var(--blue-l);font-weight:600}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-status{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:flex;align-items:center;gap:5px}
+.nav-status.ok{background:var(--green-l);color:var(--green)}
+.nav-status.loading{background:var(--orange-l);color:var(--orange)}
+.nav-status.err{background:var(--red-l);color:var(--red)}
+
+/* PAGE */
+.page{display:none;padding:32px 24px;max-width:1440px;margin:0 auto}
+.page.active{display:block;animation:fadeUp .22s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-header{margin-bottom:28px}
+.page-title{font-size:28px;font-weight:700;letter-spacing:-.6px}
+.page-sub{font-size:14px;color:var(--text2);margin-top:4px}
+
+/* CARD */
+.card{background:var(--white);border-radius:var(--rl);border:1px solid var(--border);box-shadow:var(--shadow-sm);overflow:hidden}
+.card-head{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.card-title{font-size:13px;font-weight:600;letter-spacing:-.1px}
+.card-sub{font-size:12px;color:var(--text2);margin-top:2px}
+.card-body{padding:20px}
+.card-body-0{padding:0}
+
+/* GRID */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.ga{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+/* KPI */
+.kpi{background:var(--white);border-radius:var(--r);border:1px solid var(--border);padding:18px 20px}
+.kpi-label{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);margin-bottom:8px}
+.kpi-value{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1}
+.kpi-value.blue{color:var(--blue)}.kpi-value.green{color:var(--green)}.kpi-value.red{color:var(--red)}.kpi-value.orange{color:var(--orange)}
+.kpi-sub{font-size:12px;color:var(--text2);margin-top:5px}
+
+/* TABLE */
+.tscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);background:#f5f5f7;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:#f9f9fb}
+.tfoot-row td{background:#f5f5f7;font-weight:600;border-top:2px solid var(--border-s)}
+.wk-sep td{border-top:2px solid #e5e5ea!important}
+.td-r{text-align:right;font-variant-numeric:tabular-nums}
+.td-mono{font-variant-numeric:tabular-nums}
+
+/* INPUTS */
+input[type=text],input[type=number],input[type=date],select{
+  font-family:var(--font);font-size:13px;border:1.5px solid var(--border-s);border-radius:var(--rs);
+  padding:8px 12px;background:var(--white);color:var(--text);outline:none;
+  transition:border-color .15s,box-shadow .15s;width:100%
+}
+input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,113,227,.12)}
+input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-allowed}
+.ii{background:transparent;border:1.5px solid transparent;border-radius:6px;padding:5px 8px;width:100%;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;font-family:var(--font);color:var(--text);transition:all .15s}
+.ii:hover{border-color:var(--border-s);background:var(--white)}
+.ii:focus{border-color:var(--blue);background:var(--white);box-shadow:0 0 0 3px rgba(0,113,227,.12);outline:none}
+.ii.mod{border-color:var(--orange)!important;background:var(--orange-l)!important;color:var(--orange)!important}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:none;border-radius:20px;font-family:var(--font);font-weight:500;font-size:13px;padding:8px 18px;transition:all .15s;white-space:nowrap}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-p{background:var(--blue);color:#fff}.btn-p:hover:not(:disabled){background:var(--blue-d)}
+.btn-s{background:rgba(0,0,0,.05);color:var(--text)}.btn-s:hover:not(:disabled){background:rgba(0,0,0,.09)}
+.btn-d{background:var(--red-l);color:var(--red)}.btn-d:hover:not(:disabled){background:var(--red);color:#fff}
+.btn-g{background:none;color:var(--text2);border:1.5px solid var(--border-s)}.btn-g:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+.btn-sm{padding:5px 12px;font-size:12px}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-blue{background:var(--blue-l);color:var(--blue)}
+.b-green{background:var(--green-l);color:var(--green)}
+.b-red{background:var(--red-l);color:var(--red)}
+.b-orange{background:var(--orange-l);color:var(--orange)}
+.b-gray{background:#f5f5f7;color:var(--text2);border:1px solid var(--border)}
+
+/* TABS */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:22px;overflow-x:auto}
+.tab{padding:10px 18px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:all .15s}
+.tab:hover{color:var(--text)}.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+
+/* SEGMENT */
+.seg{display:inline-flex;background:#f0f0f5;border-radius:10px;padding:3px}
+.seg-btn{padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;color:var(--text2);transition:all .15s}
+.seg-btn.active{background:var(--white);color:var(--text);box-shadow:var(--shadow-sm)}
+
+/* NOTICE */
+.notice{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:var(--rs);font-size:13px}
+.n-blue{background:var(--blue-l);color:var(--blue-d)}
+.n-green{background:var(--green-l);color:#1a7a3b}
+.n-orange{background:var(--orange-l);color:#8b5000}
+.n-red{background:var(--red-l);color:#8b0000}
+
+/* UPLOAD */
+.upload-zone{border:2px dashed var(--border-s);border-radius:var(--rl);padding:40px 32px;text-align:center;cursor:pointer;transition:all .2s;background:var(--white)}
+.upload-zone:not(.locked):hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-l)}
+.upload-zone.locked{cursor:not-allowed;opacity:.5}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.open{display:flex;animation:fadeIn .18s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--white);border-radius:var(--rl);padding:28px;width:480px;max-width:92vw;box-shadow:var(--shadow-lg);animation:slideUp .2s ease}
+@keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+.modal-title{font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:20px}
+.form-row{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:5px;display:block}
+
+/* UTILS */
+.flex{display:flex}.flex-col{flex-direction:column}.items-center{align-items:center}.items-start{align-items:flex-start}
+.justify-between{justify-content:space-between}.justify-end{justify-content:flex-end}
+.gap-4{gap:4px}.gap-8{gap:8px}.gap-12{gap:12px}.gap-16{gap:16px}.gap-24{gap:24px}
+.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}.mb-20{margin-bottom:20px}.mb-24{margin-bottom:24px}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mt-24{margin-top:24px}
+.w-full{width:100%}.text-sm{font-size:12px}.text-xs{font-size:11px}
+.c2{color:var(--text2)}.c3{color:var(--text3)}.cblue{color:var(--blue)}.cgreen{color:var(--green)}.cred{color:var(--red)}.corange{color:var(--orange)}
+.fw6{font-weight:600}.fw7{font-weight:700}.mono{font-variant-numeric:tabular-nums}
+.empty{text-align:center;padding:56px 32px;color:var(--text2)}
+.empty-icon{font-size:36px;margin-bottom:10px;display:block;opacity:.4}
+.empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:5px}
+.hc-surplus{background:#edfaf3}.hc-deficit{background:#fff3f2}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#c7c7cc;border-radius:3px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,113,227,.3);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pane{display:none}.pane.active{display:block}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">WMS<span>Planner</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('tph',this)">TPH</button>
+    <button class="nav-tab" onclick="showPage('forecast',this)">Forecast</button>
+    <button class="nav-tab" onclick="showPage('agencje',this)">Agencje</button>
+    <button class="nav-tab" onclick="showPage('idl',this)">IDL</button>
+    <button class="nav-tab" onclick="showPage('summary',this)">Summary</button>
+    <button class="nav-tab" onclick="showPage('headcount',this)">Headcount</button>
+  </div>
+  <div class="nav-right">
+    <span id="db_status" class="nav-status loading"><span class="spinner"></span> Łączenie…</span>
+    <span id="nav_hc" class="nav-status ok">HC —</span>
+  </div>
+</nav>
+
+<!-- ═══ TPH ═══ -->
+<div class="page active" id="page-tph">
+  <div class="page-header">
+    <div class="page-title">TPH &amp; Parametry</div>
+    <div class="page-sub">Konfiguracja wskaźników wydajności i parametrów globalnych</div>
+  </div>
+  <div class="g2 gap-24">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Total Production per Hour</div><div class="card-sub">Sztuki / godzinę per dział</div></div></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#f5f5f7;border-radius:10px">
+          <div><div class="fw6">Pick &amp; Pack</div><div class="text-sm c2">P&amp;P</div></div>
+          <div class="flex items-center gap-8"><input type="number" id="tph_pp" value="18" style="width:90px;text-align:right" onchange="saveSettings()"><span class="text-sm c2">szt/h</span></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#f5f5f7;border-radius:10px">
+          <div><div class="fw6">Shipping</div><div class="text-sm c2">SHIP</div></div>
+          <div class="flex items-center gap-8"><input type="number" id="tph_ship" value="40" style="width:90px;text-align:right" onchange="saveSettings()"><span class="text-sm c2">szt/h</span></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#f5f5f7;border-radius:10px">
+          <div><div class="fw6">Inbound</div><div class="text-sm c2">IB</div></div>
+          <div class="flex items-center gap-8"><input type="number" id="tph_ib" value="29" style="width:90px;text-align:right" onchange="saveSettings()"><span class="text-sm c2">szt/h</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Parametry globalne</div><div class="card-sub">Wspólne ustawienia dla wyliczeń HC</div></div></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#f5f5f7;border-radius:10px">
+          <div><div class="fw6">Godziny / tydzień / os.</div><div class="text-sm c2">Podstawa przeliczenia HC</div></div>
+          <div class="flex items-center gap-8"><input type="number" id="hours_pw" value="55" style="width:90px;text-align:right" onchange="saveSettings()"><span class="text-sm c2">h/tydz</span></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#f5f5f7;border-radius:10px">
+          <div><div class="fw6">Absencja</div><div class="text-sm c2">Korekta zapotrzebowania HC</div></div>
+          <div class="flex items-center gap-8"><input type="number" id="absence" value="5" step="0.5" style="width:90px;text-align:right" onchange="saveSettings()"><span class="text-sm c2">%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FORECAST ═══ -->
+<div class="page" id="page-forecast">
+  <div class="page-header flex justify-between items-center">
+    <div><div class="page-title">Forecast</div><div class="page-sub">Zarządzanie prognozami · plany produkcyjne · realizacja</div></div>
+  </div>
+
+  <!-- Step 1: date → Step 2: upload -->
+  <div class="g2 gap-16 mb-20" style="grid-template-columns:1fr 340px">
+    <div class="card">
+      <div class="card-head"><div><div class="card-title">Krok 1 — Data obowiązywania prognozy</div><div class="card-sub">Wymagane przed wgraniem pliku</div></div></div>
+      <div class="card-body">
+        <div class="mb-12"><label class="form-label">Prognoza obowiązuje od (niedziela tygodnia)</label>
+          <input type="date" id="fcst_date" onchange="onFcstDateChange()">
+        </div>
+        <div id="fcst_date_notice" class="notice n-orange" style="display:none">
+          <span>⚠️</span><span>Wybierz datę aby odblokować wgrywanie pliku</span>
+        </div>
+        <div id="fcst_date_ok" class="notice n-green" style="display:none">
+          <span>✅</span><span id="fcst_date_ok_text"></span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="flex:1">
+        <div class="card-head"><div class="card-title">Załadowane prognozy</div><button class="btn btn-sm btn-d" onclick="clearForecasts()">Wyczyść</button></div>
+        <div id="fcst_list" style="padding:6px;max-height:160px;overflow-y:auto">
+          <div class="empty" style="padding:20px"><span class="text-sm c2">Brak prognoz</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: upload (locked until date chosen) -->
+  <div class="card mb-20" id="upload_card">
+    <div class="card-head"><div><div class="card-title">Krok 2 — Wgraj plik XLSX</div><div class="card-sub" id="upload_card_sub">Wybierz najpierw datę obowiązywania</div></div></div>
+    <div class="card-body">
+      <div class="upload-zone locked" id="dropzone"
+        onclick="if(!this.classList.contains('locked'))document.getElementById('fileInput').click()"
+        ondragover="event.preventDefault();if(!this.classList.contains('locked'))this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="event.preventDefault();this.classList.remove('drag');if(!this.classList.contains('locked'))handleFile(event.dataTransfer.files[0])">
+        <div style="font-size:36px;margin-bottom:10px">📊</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">XPO1_Automated_Forecast_IPT.xlsx</div>
+        <div class="text-sm c2">Zakładka Daily · IB: wiersz 9 · OB/P&amp;P: wiersz 75 (Customer Shipments)</div>
+        <div class="text-xs c3 mt-8">Dewiacje: IB fcst = wiersz 6 · OB fcst = wiersz 65</div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+      <div id="upload_status" style="margin-top:10px;font-size:13px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- Inner tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="showFcstTab('comparison',this)">Porównanie prognoz</div>
+    <div class="tab" onclick="showFcstTab('plans',this)">Plany produkcyjne</div>
+    <div class="tab" onclick="showFcstTab('realization',this)">Realizacja</div>
+    <div class="tab" onclick="showFcstTab('deviations',this)">Dewiacje</div>
+  </div>
+
+  <div id="pane-comparison" class="pane active">
+    <div class="card"><div class="card-body-0 tscroll" id="cmp_tbl">
+      <div class="empty"><span class="empty-icon">📈</span><div class="empty-title">Wgraj prognozę</div></div>
+    </div></div>
+  </div>
+  <div id="pane-plans" class="pane">
+    <div class="notice n-blue mb-16"><span>ℹ️</span><div>Plany ładowane automatycznie z pliku (wiersz 9 = IB, wiersz 75 = OB/P&amp;P). Pomarańczowe pole = nadpisane ręcznie. <button class="btn btn-sm btn-g" style="margin-left:8px" onclick="resetPlans()">↺ Resetuj</button></div></div>
+    <div class="card"><div class="card-body-0 tscroll" id="plans_tbl">
+      <div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>
+    </div></div>
+  </div>
+  <div id="pane-realization" class="pane">
+    <div class="notice n-blue mb-16"><span>ℹ️</span><div>CHARGE = realizacja OB · REAL NVF+TSI = realizacja IB. Wpisuj dzień po dniu — dane są zapisywane automatycznie do bazy.</div></div>
+    <div class="card"><div class="card-body-0 tscroll" id="real_tbl">
+      <div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>
+    </div></div>
+  </div>
+  <div id="pane-deviations" class="pane">
+    <div class="g2 gap-16 mb-16">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Dewiacje FCST (prognoza vs prognoza)</div><div class="card-sub">Porównanie wersji prognoz dla tego samego dnia</div></div></div>
+        <div class="card-body-0 tscroll" id="dev_fcst_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Min. 2 prognozy</span></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Dewiacje realizacji (real vs piątkowy FCST)</div><div class="card-sub">Rzeczywiste wykonanie vs prognoza z poprzedniego piątku</div></div></div>
+        <div class="card-body-0 tscroll" id="dev_real_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Wpisz realizację</span></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Wzorce dewiacji per dzień tygodnia</div></div>
+      <div class="card-body-0 tscroll" id="dev_patterns_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Wpisz realizację</span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AGENCJE ═══ -->
+<div class="page" id="page-agencje">
+  <div class="page-header flex justify-between items-center" style="flex-wrap:wrap;gap:12px">
+    <div><div class="page-title">Agencje</div><div class="page-sub">Stan osobowy, rotacja i % realizacji wejść</div></div>
+    <div class="flex gap-8"><button class="btn btn-s" onclick="addWeekCol()">+ Tydzień</button><button class="btn btn-p" onclick="openModal('modal-agency')">+ Agencja</button></div>
+  </div>
+  <div class="card mb-20">
+    <div class="card-head"><div><div class="card-title">Stan osobowy i rotacja</div><div class="card-sub">Rotacja wyliczana automatycznie · zapis do bazy natychmiastowy</div></div></div>
+    <div class="card-body-0 tscroll" id="agency_hc"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div><div class="card-title">% Realizacji wejść</div><div class="card-sub">Zamówione vs. dostarczone osoby per nabór</div></div><button class="btn btn-sm btn-s" onclick="addRealCol()">+ Wejście</button></div>
+    <div class="card-body-0 tscroll" id="agency_real"></div>
+  </div>
+</div>
+
+<!-- ═══ IDL ═══ -->
+<div class="page" id="page-idl">
+  <div class="page-header flex justify-between items-center">
+    <div><div class="page-title">IDL / Operacja</div><div class="page-sub">Stałe etaty — pracownicy na kontraktach (nie agencyjni)</div></div>
+    <button class="btn btn-p" onclick="addIdlRow()">+ Dział</button>
+  </div>
+  <div class="card">
+    <div class="card-body-0 tscroll">
+      <table><thead><tr><th>Dział</th><th class="td-r">Funkcyjni</th><th class="td-r">Magazynier</th><th class="td-r">OWWS/Man-Up</th><th class="td-r">Shunter</th><th class="td-r">Hours (APT)</th><th></th></tr></thead>
+      <tbody id="idl_tbody"></tbody>
+      <tfoot><tr class="tfoot-row" id="idl_tfoot"></tr></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SUMMARY ═══ -->
+<div class="page" id="page-summary">
+  <div class="page-header"><div class="page-title">Summary</div><div class="page-sub">Tygodniowe zapotrzebowanie HC — pełne tygodnie Nd–So</div></div>
+  <div id="summary_content"><div class="empty"><span class="empty-icon">📊</span><div class="empty-title">Wgraj prognozę</div></div></div>
+</div>
+
+<!-- ═══ HEADCOUNT ═══ -->
+<div class="page" id="page-headcount">
+  <div class="page-header flex justify-between items-center" style="flex-wrap:wrap;gap:12px">
+    <div><div class="page-title">Headcount</div><div class="page-sub">Projekcja stanu osobowego vs. zapotrzebowanie</div></div>
+    <div class="flex items-center gap-12">
+      <div class="seg"><div class="seg-btn active" id="rseg-p" onclick="setRotMode('percent')">% auto</div><div class="seg-btn" id="rseg-f" onclick="setRotMode('fixed')">Stały</div></div>
+      <div id="rpct-info" class="flex items-center gap-8"><span class="text-sm c2">Śr. rotacja:</span><span id="avg_rot" class="fw6 corange">—</span></div>
+      <div id="rfix-wrap" style="display:none" class="flex items-center gap-8"><span class="text-sm c2">Osób/tydz:</span><input type="number" id="rot_fixed" value="10" style="width:70px" onchange="renderHC()"></div>
+    </div>
+  </div>
+  <div id="hc_content"><div class="empty"><span class="empty-icon">👥</span><div class="empty-title">Wgraj prognozę</div></div></div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="modal-agency">
+  <div class="modal">
+    <div class="modal-title">Dodaj agencję</div>
+    <div class="form-row"><label class="form-label">Nazwa agencji</label><input type="text" id="new_agency_name" placeholder="np. Apolo Staffing Agency"></div>
+    <div class="flex justify-end gap-8 mt-16"><button class="btn btn-s" onclick="closeModal('modal-agency')">Anuluj</button><button class="btn btn-p" onclick="confirmAddAgency()">Dodaj</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════
+// SUPABASE CONFIG
+// ═══════════════════════════════════════════════════
+const SB_URL = 'https://fzvfhuzxeovctumaaead.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6dmZodXp4ZW92Y3R1bWFhZWFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMDQ2NjEsImV4cCI6MjA5NTg4MDY2MX0.Py3f6NRD5aeNlN72ykgUhCKetGR44QoUcSFG7b8ClR0';
+const SB_H = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+
+async function sb(method, table, body=null, query='') {
+  const url = `${SB_URL}/rest/v1/${table}${query}`;
+  const opts = {method, headers:{...SB_H}};
+  if(body) opts.body = JSON.stringify(body);
+  if(method==='POST') opts.headers['Prefer']='resolution=merge-duplicates,return=representation';
+  const r = await fetch(url, opts);
+  if(!r.ok){ const e=await r.text(); throw new Error(`${table} ${method}: ${e}`); }
+  return r.status===204 ? null : r.json();
+}
+const sbGet  = (t,q='') => sb('GET',t,null,q);
+const sbPost = (t,b)     => sb('POST',t,b);
+const sbPatch= (t,b,q)   => sb('PATCH',t,b,q);
+const sbDel  = (t,q)     => sb('DELETE',t,null,q);
+
+// ═══════════════════════════════════════════════════
+// LOCAL STATE (populated from DB on load)
+// ═══════════════════════════════════════════════════
+const S = {
+  tph:{pp:18,ship:40,ib:29}, hoursPerWorker:55, absenceRate:0.05,
+  forecasts:[], activeFcstId:null,
+  dailyPlans:{},   // {dk:{ib,ob,manual}}
+  dailyReal:{},    // {dk:{ob_charge,ib_real}}
+  agencies:[], agencyHC:{}, agencyReal:{},
+  weekCols:['WK22'], realCols:[],
+  idlDepts:[],
+  rotMode:'percent', rotFixed:10,
+};
+
+// ═══════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════
+const num = (v,d=0) => v==null||isNaN(v)?'—':Number(v).toLocaleString('pl-PL',{maximumFractionDigits:d});
+const pct = v => v==null||isNaN(v)?'—':(v*100).toFixed(1)+'%';
+const nid = () => Date.now()+Math.random();
+
+function dateKey(d){
+  if(typeof d==='string') return d.split('T')[0];
+  return d.toISOString().split('T')[0];
+}
+function fmtDate(d){
+  const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
+  return days[d.getUTCDay()]+' '+d.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'});
+}
+function isoWeek(d){
+  const dt=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
+  dt.setUTCDate(dt.getUTCDate()+4-(dt.getUTCDay()||7));
+  const y=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  return Math.ceil((((dt-y)/86400000)+1+(y.getUTCDay()||7)-5)/7);
+}
+// Get last Friday before or on date d
+function lastFriday(d){
+  const dt=new Date(d);
+  const dow=dt.getUTCDay(); // 0=Sun
+  const daysBack = dow===5 ? 0 : (dow+2)%7+1;
+  dt.setUTCDate(dt.getUTCDate()-daysBack);
+  return dateKey(dt);
+}
+// Get last Friday before week starting on Sunday d
+function fridayBeforeWeek(sundayDk){
+  const d=new Date(sundayDk+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()-2); // Friday before Sunday
+  return dateKey(d);
+}
+function diffBadge(v){
+  if(v==null||isNaN(v)) return '<span class="badge b-gray">N/A</span>';
+  const p=(v*100).toFixed(1);
+  if(Math.abs(v)<0.03) return `<span class="badge b-gray">~0%</span>`;
+  if(v>0) return `<span class="badge b-green">+${p}%</span>`;
+  return `<span class="badge b-red">${p}%</span>`;
+}
+function getTotalHC(){
+  const wk=S.weekCols[S.weekCols.length-1];
+  return S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]||0),0);
+}
+function setDbStatus(state,msg){
+  const el=document.getElementById('db_status');
+  el.className='nav-status '+state;
+  el.innerHTML=state==='loading'?`<span class="spinner"></span> ${msg}`:msg;
+}
+
+// ═══════════════════════════════════════════════════
+// BOOTSTRAP — load all data from Supabase
+// ═══════════════════════════════════════════════════
+async function bootstrap(){
+  setDbStatus('loading','Ładowanie…');
+  try {
+    // Settings
+    const settings = await sbGet('wms_settings','?id=eq.global');
+    if(settings?.length){
+      const d=settings[0].data;
+      S.tph={pp:d.tph_pp||18,ship:d.tph_ship||40,ib:d.tph_ib||29};
+      S.hoursPerWorker=d.hours_per_worker||55;
+      S.absenceRate=(d.absence_rate||5)/100;
+      S.weekCols=d.week_cols||['WK22'];
+      S.realCols=d.real_cols||[];
+      S.rotMode=d.rot_mode||'percent';
+      S.rotFixed=d.rot_fixed||10;
+    }
+    // Forecasts
+    const fcsts = await sbGet('wms_forecasts','?order=created_at.desc');
+    S.forecasts=(fcsts||[]).map(f=>({
+      id:f.id, label:f.label, uploadDate:f.upload_date, startDate:f.start_date,
+      data:(f.data||[]).map(d=>({...d, date:new Date(d.dk+'T00:00:00Z')}))
+    }));
+    if(S.forecasts.length) S.activeFcstId=S.forecasts[0].id;
+    // Daily plans
+    const plans = await sbGet('wms_daily_plans','?order=date_key.asc');
+    (plans||[]).forEach(p=>{ S.dailyPlans[p.date_key]={ib:p.ib,ob:p.ob,manual:p.manual}; });
+    // Daily realization
+    const reals = await sbGet('wms_daily_real','?order=date_key.asc');
+    (reals||[]).forEach(r=>{ S.dailyReal[r.date_key]={ob_charge:r.ob_charge,ib_real:r.ib_real}; });
+    // Agencies
+    const agencies = await sbGet('wms_agencies','?order=sort_order.asc');
+    S.agencies=agencies||[];
+    // Agency HC
+    const hcRows = await sbGet('wms_agency_hc','?order=week_key.asc');
+    S.agencyHC={};
+    S.agencies.forEach(a=>{S.agencyHC[a.id]={};});
+    (hcRows||[]).forEach(r=>{ if(!S.agencyHC[r.agency_id])S.agencyHC[r.agency_id]={}; S.agencyHC[r.agency_id][r.week_key]=r.headcount; });
+    // Agency realization
+    const realRows = await sbGet('wms_agency_real','');
+    S.agencyReal={};
+    S.agencies.forEach(a=>{S.agencyReal[a.id]={};});
+    (realRows||[]).forEach(r=>{ if(!S.agencyReal[r.agency_id])S.agencyReal[r.agency_id]={}; S.agencyReal[r.agency_id][r.entry_date]=r.realization_pct; });
+    // IDL
+    const idl = await sbGet('wms_idl_depts','?order=sort_order.asc');
+    S.idlDepts=idl||[];
+
+    // Apply to UI
+    document.getElementById('tph_pp').value=S.tph.pp;
+    document.getElementById('tph_ship').value=S.tph.ship;
+    document.getElementById('tph_ib').value=S.tph.ib;
+    document.getElementById('hours_pw').value=S.hoursPerWorker;
+    document.getElementById('absence').value=(S.absenceRate*100);
+    document.getElementById('rot_fixed').value=S.rotFixed;
+
+    setDbStatus('ok','✓ Połączono');
+    document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
+    renderFcstList();
+    renderAgency();
+    renderIDL();
+
+  } catch(e){
+    setDbStatus('err','Błąd bazy');
+    console.error('Bootstrap error:',e);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════
+async function saveSettings(){
+  S.tph.pp=+document.getElementById('tph_pp').value||18;
+  S.tph.ship=+document.getElementById('tph_ship').value||40;
+  S.tph.ib=+document.getElementById('tph_ib').value||29;
+  S.hoursPerWorker=+document.getElementById('hours_pw').value||55;
+  S.absenceRate=(+document.getElementById('absence').value||5)/100;
+  await sbPost('wms_settings',[{id:'global',data:{
+    tph_pp:S.tph.pp,tph_ship:S.tph.ship,tph_ib:S.tph.ib,
+    hours_per_worker:S.hoursPerWorker,absence_rate:S.absenceRate*100,
+    week_cols:S.weekCols,real_cols:S.realCols,
+    rot_mode:S.rotMode,rot_fixed:S.rotFixed
+  },updated_at:new Date().toISOString()}]);
+}
+
+// ═══════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════
+function showPage(name,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='summary') renderSummary();
+  if(name==='headcount') renderHC();
+  if(name==='agencje') renderAgency();
+  if(name==='idl') renderIDL();
+}
+function showFcstTab(name,el){
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('pane-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='comparison') renderComparison();
+  if(name==='plans') renderPlans();
+  if(name==='realization') renderRealization();
+  if(name==='deviations') renderDeviations();
+}
+
+// ═══════════════════════════════════════════════════
+// FORECAST DATE GATE
+// ═══════════════════════════════════════════════════
+function onFcstDateChange(){
+  const val=document.getElementById('fcst_date').value;
+  const zone=document.getElementById('dropzone');
+  const notice=document.getElementById('fcst_date_notice');
+  const okBox=document.getElementById('fcst_date_ok');
+  const sub=document.getElementById('upload_card_sub');
+  if(!val){
+    zone.classList.add('locked');
+    notice.style.display='flex'; okBox.style.display='none';
+    sub.textContent='Wybierz najpierw datę obowiązywania';
+    return;
+  }
+  zone.classList.remove('locked');
+  notice.style.display='none'; okBox.style.display='flex';
+  const d=new Date(val+'T00:00:00Z');
+  const wk=isoWeek(d);
+  document.getElementById('fcst_date_ok_text').textContent=`Prognoza od WK${wk} · ${d.toLocaleDateString('pl-PL',{timeZone:'UTC'})}`;
+  sub.textContent='Przeciągnij lub kliknij aby wgrać plik';
+}
+
+// ═══════════════════════════════════════════════════
+// FILE UPLOAD
+// ═══════════════════════════════════════════════════
+function handleFile(file){
+  if(!file) return;
+  const statusEl=document.getElementById('upload_status');
+  statusEl.style.display='block';
+  statusEl.innerHTML='<span class="spinner"></span> Przetwarzanie…';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+      const wsName=wb.SheetNames.find(s=>s.toLowerCase().includes('daily'))||wb.SheetNames[0];
+      parseDaily(wb.Sheets[wsName],file.name,statusEl);
+    }catch(err){
+      statusEl.innerHTML=`<span style="color:var(--red)">❌ ${err.message}</span>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseDaily(ws,filename,statusEl){
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  const maxRow=range.e.r, maxCol=range.e.c;
+  let ibPlanRow=-1,obPlanRow=-1,ibFcstRow=-1,obFcstRow=-1;
+  const dateCols=[];
+
+  for(let r=0;r<=Math.min(maxRow,110);r++){
+    const c0=ws[XLSX.utils.encode_cell({r,c:0})];
+    const label=c0?String(c0.v||'').trim():'';
+
+    if(label==='Vendor Receipts + Transfer In Receipts') ibPlanRow=r;
+    if(label==='Customer Shipments') obPlanRow=r;
+    if(label==='New Vendor Freight + New Transfer In') ibFcstRow=r;
+    if(label==='New Workable Assignments') obFcstRow=r;
+
+    // Date row (row index 3 = Excel row 4)
+    if(r===3){
+      for(let c=1;c<=maxCol;c++){
+        const cell=ws[XLSX.utils.encode_cell({r:3,c})];
+        if(!cell) continue;
+        let d=null;
+        if(cell.t==='d'&&cell.v instanceof Date) d=cell.v;
+        else if(cell.t==='n'&&cell.v>44000&&cell.v<50000) d=new Date(Math.round((cell.v-25569)*86400000));
+        if(d) dateCols.push({col:c,date:d,dk:dateKey(d)});
+      }
+    }
+  }
+
+  if(!dateCols.length){statusEl.innerHTML='<span style="color:var(--red)">❌ Brak dat (wiersz 4)</span>';return;}
+
+  const startDk=document.getElementById('fcst_date').value;
+  const startDate=new Date(startDk+'T00:00:00Z');
+  const getV=(row,col)=>{ if(row<0)return 0; const c=ws[XLSX.utils.encode_cell({r:row,c:col})]; return c?parseFloat(c.v)||0:0; };
+
+  const data=[];
+  for(const {col,date,dk} of dateCols){
+    if(date<startDate) continue;
+    data.push({
+      dk, ib:getV(ibPlanRow,col), ob:getV(obPlanRow,col),
+      ib_fcst:getV(ibFcstRow,col), ob_fcst:getV(obFcstRow,col)
+    });
+  }
+
+  if(!data.length){statusEl.innerHTML='<span style="color:var(--red)">❌ Brak danych po wybranej dacie</span>';return;}
+
+  const found=[];
+  if(ibPlanRow>=0) found.push('IB plan ✓'); else found.push('⚠ IB plan brak');
+  if(obPlanRow>=0) found.push('OB plan ✓'); else found.push('⚠ OB plan brak');
+  if(ibFcstRow>=0) found.push('IB fcst ✓'); else found.push('⚠ IB fcst brak');
+  if(obFcstRow>=0) found.push('OB fcst ✓'); else found.push('⚠ OB fcst brak');
+
+  saveForecast(filename,startDk,data,statusEl,found);
+}
+
+async function saveForecast(filename,startDk,data,statusEl,found){
+  setDbStatus('loading','Zapis…');
+  try{
+    // Save to DB
+    const rows=await sbPost('wms_forecasts',[{
+      label:filename.replace(/\.[^.]+$/,''),
+      upload_date:new Date().toISOString().split('T')[0],
+      start_date:startDk,
+      data:data
+    }]);
+    const fcstId=rows[0].id;
+
+    // Auto-populate plans (only non-manual)
+    const planUpserts=[];
+    for(const d of data){
+      if(!S.dailyPlans[d.dk]||!S.dailyPlans[d.dk].manual){
+        S.dailyPlans[d.dk]={ib:d.ib,ob:d.ob,manual:false};
+        planUpserts.push({date_key:d.dk,ib:d.ib,ob:d.ob,manual:false,updated_at:new Date().toISOString()});
+      }
+    }
+    if(planUpserts.length) await sbPost('wms_daily_plans',planUpserts);
+
+    // Add to local state
+    S.forecasts.unshift({
+      id:fcstId, label:filename.replace(/\.[^.]+$/,''),
+      uploadDate:new Date().toISOString().split('T')[0],
+      startDate:startDk,
+      data:data.map(d=>({...d,date:new Date(d.dk+'T00:00:00Z')}))
+    });
+    S.activeFcstId=fcstId;
+
+    setDbStatus('ok','✓ Zapisano');
+    statusEl.innerHTML=`<span style="color:var(--green)">✅ ${data.length} dni · ${found.join(' · ')}</span>`;
+    renderFcstList(); renderComparison(); renderPlans();
+  }catch(e){
+    setDbStatus('err','Błąd zapisu');
+    statusEl.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;
+  }
+}
+
+function renderFcstList(){
+  const el=document.getElementById('fcst_list');
+  if(!S.forecasts.length){el.innerHTML='<div class="empty" style="padding:20px"><span class="text-sm c2">Brak prognoz</span></div>';return;}
+  el.innerHTML=S.forecasts.map(f=>`
+    <div onclick="setActiveFcst(${f.id})" style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:10px;cursor:pointer;margin:3px;border:1.5px solid ${f.id===S.activeFcstId?'var(--blue)':'transparent'};background:${f.id===S.activeFcstId?'var(--blue-l)':'#f5f5f7'}">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:${f.id===S.activeFcstId?'var(--blue)':'var(--text)'}">${f.label.slice(0,26)}</div>
+        <div class="text-xs c3" style="margin-top:2px">od ${f.startDate} · ${f.data.length} dni</div>
+      </div>
+      <button class="btn btn-sm btn-d" onclick="event.stopPropagation();deleteFcst(${f.id})">✕</button>
+    </div>`).join('');
+}
+function setActiveFcst(id){S.activeFcstId=id;renderFcstList();renderComparison();renderPlans();}
+async function deleteFcst(id){
+  if(!confirm('Usunąć prognozę?'))return;
+  await sbDel('wms_forecasts',`?id=eq.${id}`);
+  S.forecasts=S.forecasts.filter(f=>f.id!==id);
+  if(S.activeFcstId===id) S.activeFcstId=S.forecasts[0]?.id||null;
+  renderFcstList(); renderComparison();
+}
+async function clearForecasts(){
+  if(!confirm('Usunąć wszystkie prognozy?'))return;
+  await sbDel('wms_forecasts','?id=gt.0');
+  S.forecasts=[]; S.activeFcstId=null;
+  renderFcstList(); renderComparison();
+}
+
+// ═══════════════════════════════════════════════════
+// COMPARISON TABLE
+// ═══════════════════════════════════════════════════
+function renderComparison(){
+  const el=document.getElementById('cmp_tbl');
+  if(S.forecasts.length<1){el.innerHTML='<div class="empty"><span class="empty-icon">📈</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  const sorted=[...S.forecasts].sort((a,b)=>b.uploadDate.localeCompare(a.uploadDate));
+  const today=sorted[0], prev=sorted[1]||null;
+  // Friday forecast = last forecast uploaded on or before last Friday
+  const todayDate=new Date();
+  const lFri=lastFriday(todayDate);
+  const friFcst=sorted.find(f=>f.uploadDate<=lFri)||sorted[sorted.length-1];
+
+  const getV=(fcst,dk,field)=>{ if(!fcst)return null; const d=fcst.data.find(x=>x.dk===dk); return d?d[field]:null; };
+  const allDks=new Set(); S.forecasts.forEach(f=>f.data.forEach(d=>allDks.add(d.dk)));
+  const dks=[...allDks].sort().slice(0,112);
+
+  let html=`<table><thead><tr>
+    <th>WK</th><th>Data</th>
+    <th colspan="2" style="text-align:center;color:var(--blue)">Dziś (${today.uploadDate})</th>
+    <th colspan="2" style="text-align:center;color:var(--text2)">Poprzednia (${prev?.uploadDate||'—'})</th>
+    <th colspan="2" style="text-align:center;color:var(--orange)">Piątek (${friFcst?.uploadDate||'—'})</th>
+    <th colspan="2" style="text-align:center">Δ D0/D-1</th>
+    <th colspan="2" style="text-align:center">Δ D0/Piątek</th>
+  </tr><tr><th></th><th></th>
+    <th class="td-r">IB</th><th class="td-r">OB</th>
+    <th class="td-r">IB</th><th class="td-r">OB</th>
+    <th class="td-r">IB</th><th class="td-r">OB</th>
+    <th class="td-r">IB</th><th class="td-r">OB</th>
+    <th class="td-r">IB</th><th class="td-r">OB</th>
+  </tr></thead><tbody>`;
+  let lastWk=null;
+  for(const dk of dks){
+    const d=new Date(dk+'T00:00:00Z'); const wk=isoWeek(d); const isSun=d.getUTCDay()===0;
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const ibT=getV(today,dk,'ib'),obT=getV(today,dk,'ob');
+    const ibP=getV(prev,dk,'ib'),obP=getV(prev,dk,'ob');
+    const ibF=getV(friFcst,dk,'ib'),obF=getV(friFcst,dk,'ob');
+    const dIbP=(ibT&&ibP)?(ibT-ibP)/ibP:null,dObP=(obT&&obP)?(obT-obP)/obP:null;
+    const dIbF=(ibT&&ibF)?(ibT-ibF)/ibF:null,dObF=(obT&&obF)?(obT-obF)/obF:null;
+    html+=`<tr class="${isSun?'wk-sep':''}">
+      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d)}</td>
+      <td class="td-r mono cblue">${num(ibT)}</td><td class="td-r mono cblue">${num(obT)}</td>
+      <td class="td-r mono c2">${num(ibP)}</td><td class="td-r mono c2">${num(obP)}</td>
+      <td class="td-r mono corange">${num(ibF)}</td><td class="td-r mono corange">${num(obF)}</td>
+      <td class="td-r">${diffBadge(dIbP)}</td><td class="td-r">${diffBadge(dObP)}</td>
+      <td class="td-r">${diffBadge(dIbF)}</td><td class="td-r">${diffBadge(dObF)}</td>
+    </tr>`;
+  }
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════
+// PLANS TABLE
+// ═══════════════════════════════════════════════════
+function renderPlans(){
+  const el=document.getElementById('plans_tbl');
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
+  if(!fcst){el.innerHTML='<div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  let html=`<table><thead><tr><th>WK</th><th>Data</th>
+    <th class="td-r">IB Plan (w.9)</th><th class="td-r c3 text-xs">ref</th>
+    <th class="td-r">OB Plan (w.75)</th><th class="td-r c3 text-xs">ref</th>
+    <th class="td-r">Throughput</th></tr></thead><tbody>`;
+  let lastWk=null;
+  for(const d of fcst.data){
+    const wk=isoWeek(d.date); const isSun=d.date.getUTCDay()===0;
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const plan=S.dailyPlans[d.dk]||{ib:d.ib,ob:d.ob,manual:false};
+    const pIb=plan.ib??d.ib, pOb=plan.ob??d.ob;
+    const modIb=plan.manual&&Math.round(pIb)!==Math.round(d.ib);
+    const modOb=plan.manual&&Math.round(pOb)!==Math.round(d.ob);
+    const tp=(pIb||0)+(pOb||0);
+    html+=`<tr class="${isSun?'wk-sep':''}">
+      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d.date)}</td>
+      <td class="td-r"><input class="ii ${modIb?'mod':''}" type="number" value="${Math.round(pIb||0)}" onchange="setPlan('${d.dk}','ib',this.value,this,${Math.round(d.ib)})" style="width:110px"></td>
+      <td class="td-r c3 mono text-xs">${num(d.ib)}</td>
+      <td class="td-r"><input class="ii ${modOb?'mod':''}" type="number" value="${Math.round(pOb||0)}" onchange="setPlan('${d.dk}','ob',this.value,this,${Math.round(d.ob)})" style="width:110px"></td>
+      <td class="td-r c3 mono text-xs">${num(d.ob)}</td>
+      <td class="td-r fw6 mono cgreen">${num(tp)}</td>
+    </tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+async function setPlan(dk,field,val,inputEl,orig){
+  if(!S.dailyPlans[dk]) S.dailyPlans[dk]={ib:0,ob:0,manual:false};
+  S.dailyPlans[dk][field]=parseFloat(val)||0;
+  S.dailyPlans[dk].manual=true;
+  inputEl.classList.toggle('mod',Math.round(parseFloat(val))!==Math.round(orig));
+  await sbPost('wms_daily_plans',[{date_key:dk,ib:S.dailyPlans[dk].ib,ob:S.dailyPlans[dk].ob,manual:true,updated_at:new Date().toISOString()}]);
+}
+async function resetPlans(){
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
+  if(!fcst||!confirm('Resetować do wartości z prognozy?'))return;
+  const upserts=[];
+  for(const d of fcst.data){
+    S.dailyPlans[d.dk]={ib:d.ib,ob:d.ob,manual:false};
+    upserts.push({date_key:d.dk,ib:d.ib,ob:d.ob,manual:false,updated_at:new Date().toISOString()});
+  }
+  await sbPost('wms_daily_plans',upserts);
+  renderPlans();
+}
+
+// ═══════════════════════════════════════════════════
+// REALIZATION TABLE
+// ═══════════════════════════════════════════════════
+function renderRealization(){
+  const el=document.getElementById('real_tbl');
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
+  if(!fcst){el.innerHTML='<div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  let html=`<table><thead><tr><th>WK</th><th>Data</th>
+    <th class="td-r">OB Plan</th><th class="td-r">CHARGE (real. OB)</th>
+    <th class="td-r">IB Plan</th><th class="td-r">REAL NVF+TSI (real. IB)</th>
+    <th class="td-r">Δ OB</th><th class="td-r">Δ IB</th>
+  </tr></thead><tbody>`;
+  let lastWk=null;
+  for(const d of fcst.data){
+    const wk=isoWeek(d.date); const isSun=d.date.getUTCDay()===0;
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const pOb=S.dailyPlans[d.dk]?.ob||0, pIb=S.dailyPlans[d.dk]?.ib||0;
+    const rOb=S.dailyReal[d.dk]?.ob_charge??'', rIb=S.dailyReal[d.dk]?.ib_real??'';
+    const dOb=(rOb!==''&&pOb>0)?((rOb-pOb)/pOb):null;
+    const dIb=(rIb!==''&&pIb>0)?((rIb-pIb)/pIb):null;
+    html+=`<tr class="${isSun?'wk-sep':''}">
+      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d.date)}</td>
+      <td class="td-r c2 mono">${num(pOb)}</td>
+      <td class="td-r"><input class="ii" type="number" value="${rOb}" placeholder="—" onchange="setReal('${d.dk}','ob_charge',this.value)" style="width:110px"></td>
+      <td class="td-r c2 mono">${num(pIb)}</td>
+      <td class="td-r"><input class="ii" type="number" value="${rIb}" placeholder="—" onchange="setReal('${d.dk}','ib_real',this.value)" style="width:110px"></td>
+      <td class="td-r">${diffBadge(dOb)}</td><td class="td-r">${diffBadge(dIb)}</td>
+    </tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+async function setReal(dk,field,val){
+  if(!S.dailyReal[dk]) S.dailyReal[dk]={};
+  S.dailyReal[dk][field]=parseFloat(val)||null;
+  await sbPost('wms_daily_real',[{date_key:dk,ob_charge:S.dailyReal[dk].ob_charge,ib_real:S.dailyReal[dk].ib_real,updated_at:new Date().toISOString()}]);
+  // Refresh deviation delta in same row without full re-render
+}
+
+// ═══════════════════════════════════════════════════
+// DEVIATIONS — 2 cases
+// ═══════════════════════════════════════════════════
+function renderDeviations(){
+  renderDevFcst();
+  renderDevReal();
+  renderDevPatterns();
+}
+
+function renderDevFcst(){
+  const el=document.getElementById('dev_fcst_tbl');
+  if(S.forecasts.length<2){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Wymagane min. 2 prognozy</span></div>';return;}
+  const sorted=[...S.forecasts].sort((a,b)=>b.uploadDate.localeCompare(a.uploadDate));
+  const today=sorted[0], prev=sorted[1];
+  const lFri=lastFriday(new Date());
+  const friFcst=sorted.find(f=>f.uploadDate<=lFri)||sorted[sorted.length-1];
+
+  const getV=(fcst,dk,field)=>{ const d=fcst?.data?.find(x=>x.dk===dk); return d?d[field]:null; };
+  const dks=[...new Set(today.data.map(d=>d.dk))].sort().slice(0,90);
+
+  let html=`<table><thead><tr>
+    <th>WK</th><th>Data</th>
+    <th class="td-r">IB fcst dziś</th><th class="td-r">IB fcst wczoraj</th><th class="td-r">Δ D0/D-1 IB</th>
+    <th class="td-r">IB fcst piątek</th><th class="td-r">Δ D0/Piątek IB</th>
+    <th class="td-r">OB fcst dziś</th><th class="td-r">OB fcst wczoraj</th><th class="td-r">Δ D0/D-1 OB</th>
+    <th class="td-r">OB fcst piątek</th><th class="td-r">Δ D0/Piątek OB</th>
+  </tr></thead><tbody>`;
+  let lastWk=null;
+  for(const dk of dks){
+    const d=new Date(dk+'T00:00:00Z'); const wk=isoWeek(d); const isSun=d.getUTCDay()===0;
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    // Use ib_fcst (row 6) and ob_fcst (row 65)
+    const ibT=getV(today,dk,'ib_fcst'), ibP=getV(prev,dk,'ib_fcst'), ibF=getV(friFcst,dk,'ib_fcst');
+    const obT=getV(today,dk,'ob_fcst'), obP=getV(prev,dk,'ob_fcst'), obF=getV(friFcst,dk,'ob_fcst');
+    const dIbP=(ibT&&ibP)?(ibT-ibP)/ibP:null, dIbF=(ibT&&ibF)?(ibT-ibF)/ibF:null;
+    const dObP=(obT&&obP)?(obT-obP)/obP:null, dObF=(obT&&obF)?(obT-obF)/obF:null;
+    html+=`<tr class="${isSun?'wk-sep':''}">
+      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d)}</td>
+      <td class="td-r mono cblue">${num(ibT)}</td><td class="td-r mono c2">${num(ibP)}</td><td class="td-r">${diffBadge(dIbP)}</td>
+      <td class="td-r mono corange">${num(ibF)}</td><td class="td-r">${diffBadge(dIbF)}</td>
+      <td class="td-r mono cblue">${num(obT)}</td><td class="td-r mono c2">${num(obP)}</td><td class="td-r">${diffBadge(dObP)}</td>
+      <td class="td-r mono corange">${num(obF)}</td><td class="td-r">${diffBadge(dObF)}</td>
+    </tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+
+function renderDevReal(){
+  const el=document.getElementById('dev_real_tbl');
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
+  if(!fcst){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
+
+  // For each day: get the Friday forecast that was in force that week
+  // Friday forecast = last forecast whose startDate <= Sunday of that week
+  const getFridayFcstForWeek=(sundayDk)=>{
+    const friFk=fridayBeforeWeek(sundayDk);
+    const sorted=[...S.forecasts].sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    return sorted.find(f=>f.startDate<=friFk)||sorted[sorted.length-1];
+  };
+
+  let html=`<table><thead><tr>
+    <th>WK</th><th>Data</th>
+    <th class="td-r">OB real.</th><th class="td-r">OB fcst piątek</th><th class="td-r">Δ OB</th>
+    <th class="td-r">IB real.</th><th class="td-r">IB fcst piątek</th><th class="td-r">Δ IB</th>
+  </tr></thead><tbody>`;
+  let lastWk=null, lastFriFcst=null, lastSunDk=null;
+  for(const d of fcst.data){
+    const isSun=d.date.getUTCDay()===0;
+    if(isSun){ lastSunDk=d.dk; lastFriFcst=getFridayFcstForWeek(d.dk); }
+    const wk=isoWeek(d.date);
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const rOb=S.dailyReal[d.dk]?.ob_charge, rIb=S.dailyReal[d.dk]?.ib_real;
+    const friFcstDay=lastFriFcst?.data?.find(x=>x.dk===d.dk);
+    const fObFcst=friFcstDay?.ob_fcst, fIbFcst=friFcstDay?.ib_fcst;
+    const dOb=(rOb!=null&&fObFcst)?(rOb-fObFcst)/fObFcst:null;
+    const dIb=(rIb!=null&&fIbFcst)?(rIb-fIbFcst)/fIbFcst:null;
+    html+=`<tr class="${isSun?'wk-sep':''}">
+      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d.date)}</td>
+      <td class="td-r mono ${rOb!=null?'cgreen':''}">${rOb!=null?num(rOb):'—'}</td>
+      <td class="td-r mono c2">${fObFcst!=null?num(fObFcst):'—'}</td><td class="td-r">${diffBadge(dOb)}</td>
+      <td class="td-r mono ${rIb!=null?'cgreen':''}">${rIb!=null?num(rIb):'—'}</td>
+      <td class="td-r mono c2">${fIbFcst!=null?num(fIbFcst):'—'}</td><td class="td-r">${diffBadge(dIb)}</td>
+    </tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+
+function renderDevPatterns(){
+  const el=document.getElementById('dev_patterns_tbl');
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
+  if(!fcst){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
+  const dowNames=['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];
+  const byDow=Array.from({length:7},()=>({ob:[],ib:[]}));
+  for(const d of fcst.data){
+    const r=S.dailyReal[d.dk]; if(!r) continue;
+    const pOb=S.dailyPlans[d.dk]?.ob||0, pIb=S.dailyPlans[d.dk]?.ib||0;
+    const dow=d.date.getUTCDay();
+    if(pOb>0&&r.ob_charge!=null) byDow[dow].ob.push(r.ob_charge/pOb-1);
+    if(pIb>0&&r.ib_real!=null) byDow[dow].ib.push(r.ib_real/pIb-1);
+  }
+  const avg=arr=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:null;
+  let html=`<table><thead><tr><th>Dzień</th><th class="td-r">Śr. Δ OB</th><th class="td-r">Śr. Δ IB</th><th>Próbek</th><th>Trend</th></tr></thead><tbody>`;
+  for(let i=0;i<7;i++){
+    const aOb=avg(byDow[i].ob),aIb=avg(byDow[i].ib);
+    const note=aOb==null?'—':aOb<-0.1?'⚠️ OB systematycznie niedowożony':aOb>0.1?'📈 OB systematycznie przekraczany':'✅ OK';
+    html+=`<tr><td class="fw6">${dowNames[i]}</td><td class="td-r">${diffBadge(aOb)}</td><td class="td-r">${aIb!=null?diffBadge(aIb):'—'}</td><td class="c2 text-sm">${byDow[i].ob.length} obs.</td><td class="text-sm">${note}</td></tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+
+// ═══════════════════════════════════════════════════
+// AGENCIES
+// ═══════════════════════════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+async function confirmAddAgency(){
+  const name=document.getElementById('new_agency_name').value.trim();
+  if(!name)return;
+  const rows=await sbPost('wms_agencies',[{name,sort_order:S.agencies.length+1}]);
+  const a=rows[0];
+  S.agencies.push(a);
+  S.agencyHC[a.id]={};
+  S.agencyReal[a.id]={};
+  S.weekCols.forEach(w=>{S.agencyHC[a.id][w]=0;});
+  closeModal('modal-agency');
+  renderAgency();
+}
+async function removeAgency(id){
+  if(!confirm('Usunąć agencję? Dane zostaną trwale usunięte.'))return;
+  await sbDel('wms_agencies',`?id=eq.${id}`);
+  S.agencies=S.agencies.filter(a=>a.id!==id);
+  renderAgency();
+}
+async function addWeekCol(){
+  const wk=prompt('Numer tygodnia (np. WK23):'); if(!wk)return;
+  const key=wk.startsWith('WK')?wk:'WK'+wk;
+  if(S.weekCols.includes(key)){alert('Już istnieje');return;}
+  S.weekCols.push(key);
+  // Init HC=0 for all agencies for this week
+  const upserts=S.agencies.map(a=>({agency_id:a.id,week_key:key,headcount:0}));
+  if(upserts.length) await sbPost('wms_agency_hc',upserts);
+  S.agencies.forEach(a=>{if(!S.agencyHC[a.id])S.agencyHC[a.id]={};S.agencyHC[a.id][key]=0;});
+  await saveSettings();
+  renderAgency();
+}
+async function addRealCol(){
+  const dt=prompt('Data wejścia (RRRR-MM-DD):'); if(!dt)return;
+  if(S.realCols.includes(dt)){alert('Już istnieje');return;}
+  S.realCols.push(dt); S.realCols.sort();
+  await saveSettings();
+  renderAgency();
+}
+async function setHC(aid,wk,v){
+  const hc=parseInt(v)||0;
+  if(!S.agencyHC[aid])S.agencyHC[aid]={};
+  S.agencyHC[aid][wk]=hc;
+  await sbPost('wms_agency_hc',[{agency_id:aid,week_key:wk,headcount:hc}]);
+  document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
+  // update total row
+  const totalCells=document.querySelectorAll('.agency-total-cell');
+  S.weekCols.forEach((w,i)=>{
+    const tot=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]||0),0);
+    if(totalCells[i]) totalCells[i].textContent=tot;
+  });
+}
+async function setAReal(aid,dt,v){
+  const pctVal=parseFloat(v)||null;
+  if(!S.agencyReal[aid])S.agencyReal[aid]={};
+  S.agencyReal[aid][dt]=pctVal;
+  await sbPost('wms_agency_real',[{agency_id:aid,entry_date:dt,realization_pct:pctVal}]);
+}
+function getRotation(aid){
+  const wks=S.weekCols; if(wks.length<2)return null;
+  const hc=S.agencyHC[aid]||{};
+  const changes=[];
+  for(let i=1;i<wks.length;i++){ const p=hc[wks[i-1]]||0,c=hc[wks[i]]||0; if(p>0) changes.push((p-c)/p); }
+  return changes.length?changes.reduce((s,v)=>s+v,0)/changes.length:null;
+}
+function getAvgRotation(){
+  const rates=S.agencies.map(a=>getRotation(a.id)).filter(v=>v!=null);
+  return rates.length?rates.reduce((s,v)=>s+v,0)/rates.length:null;
+}
+function renderAgency(){ renderAgencyHC(); renderAgencyReal(); }
+function renderAgencyHC(){
+  const wrap=document.getElementById('agency_hc');
+  const wks=S.weekCols;
+  let html=`<table><thead><tr><th style="min-width:200px">Agencja</th>${wks.map(w=>`<th class="td-r">${w}</th>`).join('')}<th class="td-r">Rotacja</th><th></th></tr></thead><tbody>`;
+  S.agencies.forEach(a=>{
+    const rot=getRotation(a.id);
+    const rc=rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen';
+    html+=`<tr><td class="fw6">${a.name}</td>
+      ${wks.map(w=>`<td class="td-r"><input class="ii" type="number" value="${S.agencyHC[a.id]?.[w]||0}" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`).join('')}
+      <td class="td-r fw6 ${rc}">${rot!=null?pct(rot):'—'}</td>
+      <td><button class="btn btn-sm btn-d" onclick="removeAgency(${a.id})">✕</button></td>
+    </tr>`;
+  });
+  const totals=wks.map(w=>S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]||0),0));
+  const avgRot=getAvgRotation();
+  html+=`<tr class="tfoot-row"><td><strong>Razem</strong></td>${totals.map(t=>`<td class="td-r cblue fw6 agency-total-cell">${t}</td>`).join('')}<td class="td-r corange fw6">${avgRot!=null?pct(avgRot):'—'}</td><td></td></tr>`;
+  wrap.innerHTML=html+'</tbody></table>';
+}
+function renderAgencyReal(){
+  const wrap=document.getElementById('agency_real');
+  const cols=S.realCols;
+  if(!cols.length){wrap.innerHTML='<div class="empty" style="padding:28px"><span class="text-sm c2">Dodaj datę wejścia aby uzupełnić % realizacji</span></div>';return;}
+  let html=`<table><thead><tr><th style="min-width:200px">Agencja</th>${cols.map(c=>`<th class="td-r">${c}</th>`).join('')}<th class="td-r">Śr. realizacja</th></tr></thead><tbody>`;
+  S.agencies.forEach(a=>{
+    const r=S.agencyReal[a.id]||{};
+    const vals=cols.map(c=>r[c]!=null?parseFloat(r[c]):null);
+    const def=vals.filter(v=>v!=null);
+    const avg=def.length?def.reduce((s,v)=>s+v,0)/def.length:null;
+    const ac=avg==null?'c3':avg<70?'cred':avg<90?'corange':'cgreen';
+    html+=`<tr><td class="fw6">${a.name}</td>
+      ${cols.map((c,i)=>`<td class="td-r"><input class="ii" type="number" value="${vals[i]!=null?vals[i]:''}" placeholder="%" min="0" max="100" onchange="setAReal(${a.id},'${c}',this.value)" style="width:80px"></td>`).join('')}
+      <td class="td-r fw6 ${ac}">${avg!=null?avg.toFixed(0)+'%':'—'}</td>
+    </tr>`;
+  });
+  wrap.innerHTML=html+'</tbody></table>';
+}
+
+// ═══════════════════════════════════════════════════
+// IDL
+// ═══════════════════════════════════════════════════
+async function addIdlRow(){
+  const name=prompt('Nazwa działu:'); if(!name)return;
+  const rows=await sbPost('wms_idl_depts',[{name,fn:0,mag:0,owws:0,sh:0,sort_order:S.idlDepts.length+1}]);
+  S.idlDepts.push(rows[0]);
+  renderIDL();
+}
+async function removeIdl(id){ await sbDel('wms_idl_depts',`?id=eq.${id}`); S.idlDepts=S.idlDepts.filter(x=>x.id!==id); renderIDL(); }
+async function setIdl(id,f,v){
+  const d=S.idlDepts.find(x=>x.id===id); if(!d)return;
+  d[f]=f==='name'?v:(parseInt(v)||0);
+  await sbPatch('wms_idl_depts',{[f]:d[f]},`?id=eq.${id}`);
+  renderIDL();
+}
+function renderIDL(){
+  const tbody=document.getElementById('idl_tbody');
+  tbody.innerHTML=S.idlDepts.map(d=>{
+    const h=(d.fn+d.mag+d.owws+d.sh)*S.hoursPerWorker;
+    return `<tr>
+      <td><input class="ii" type="text" value="${d.name}" onchange="setIdl(${d.id},'name',this.value)" style="text-align:left;width:90px"></td>
+      <td class="td-r"><input class="ii" type="number" value="${d.fn}" onchange="setIdl(${d.id},'fn',this.value)" style="width:75px"></td>
+      <td class="td-r"><input class="ii" type="number" value="${d.mag}" onchange="setIdl(${d.id},'mag',this.value)" style="width:75px"></td>
+      <td class="td-r"><input class="ii" type="number" value="${d.owws}" onchange="setIdl(${d.id},'owws',this.value)" style="width:75px"></td>
+      <td class="td-r"><input class="ii" type="number" value="${d.sh}" onchange="setIdl(${d.id},'sh',this.value)" style="width:75px"></td>
+      <td class="td-r fw6 cblue mono">${num(h)}</td>
+      <td><button class="btn btn-sm btn-d" onclick="removeIdl(${d.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+  const t=S.idlDepts.reduce((s,d)=>({fn:s.fn+d.fn,mag:s.mag+d.mag,owws:s.owws+d.owws,sh:s.sh+d.sh}),{fn:0,mag:0,owws:0,sh:0});
+  document.getElementById('idl_tfoot').innerHTML=`<td><strong>Razem</strong></td><td class="td-r fw6">${t.fn}</td><td class="td-r fw6">${t.mag}</td><td class="td-r fw6">${t.owws}</td><td class="td-r fw6">${t.sh}</td><td class="td-r fw6 cblue mono">${num((t.fn+t.mag+t.owws+t.sh)*S.hoursPerWorker)}</td><td></td>`;
+}
+
+// ═══════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════
+function getFullWeeks(){
+  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId)||S.forecasts[0];
+  if(!fcst)return[];
+  const byWeek={};
+  for(const d of fcst.data){
+    const dow=d.date.getUTCDay();
+    const ws=new Date(d.date); ws.setUTCDate(d.date.getUTCDate()-dow);
+    const wsk=dateKey(ws);
+    if(!byWeek[wsk])byWeek[wsk]={start:ws,days:[]};
+    byWeek[wsk].days.push(d);
+  }
+  return Object.values(byWeek).filter(w=>w.days.length===7).sort((a,b)=>a.start-b.start);
+}
+function calcWeek(days){
+  let ib=0,ob=0;
+  for(const d of days){ const p=S.dailyPlans[d.dk]||{ib:d.ib,ob:d.ob}; ib+=p.ib||0; ob+=p.ob||0; }
+  const h=S.hoursPerWorker,abs=S.absenceRate;
+  const ppH=S.tph.pp>0?ob/S.tph.pp:0, shipH=S.tph.ship>0?ob/S.tph.ship:0, ibH=S.tph.ib>0?ib/S.tph.ib:0;
+  const wkH=ppH+shipH+ibH;
+  return {ib,ob,ppH,shipH,ibH,wkH,ppHC:ppH/h,shipHC:shipH/h,ibHC:ibH/h,
+    totalHC:h>0?Math.ceil(wkH/h/(1-abs)):0,days};
+}
+function renderSummary(){
+  const el=document.getElementById('summary_content');
+  const weeks=getFullWeeks();
+  if(!weeks.length){el.innerHTML='<div class="empty"><span class="empty-icon">📊</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  el.innerHTML=weeks.map(wk=>{
+    const s=calcWeek(wk.days);
+    const wkN=isoWeek(wk.start);
+    const endD=new Date(wk.start); endD.setUTCDate(wk.start.getUTCDate()+6);
+    return `<div style="margin-bottom:36px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="font-size:22px;font-weight:700;letter-spacing:-.4px">WK ${wkN}</div>
+        <div class="c2 text-sm">${wk.start.toLocaleDateString('pl-PL',{day:'2-digit',month:'short',timeZone:'UTC'})} – ${endD.toLocaleDateString('pl-PL',{day:'2-digit',month:'short',timeZone:'UTC'})}</div>
+      </div>
+      <div class="ga mb-16">
+        <div class="kpi"><div class="kpi-label">Weekly Throughput</div><div class="kpi-value blue">${num(s.ib+s.ob)}</div><div class="kpi-sub">IB + OB</div></div>
+        <div class="kpi"><div class="kpi-label">Total OB</div><div class="kpi-value">${num(s.ob)}</div><div class="kpi-sub">${num(s.ppH,0)}h P&amp;P · ${num(s.shipH,0)}h SHIP</div></div>
+        <div class="kpi"><div class="kpi-label">Total IB</div><div class="kpi-value">${num(s.ib)}</div><div class="kpi-sub">${num(s.ibH,0)}h IB</div></div>
+        <div class="kpi"><div class="kpi-label">P&amp;P HC</div><div class="kpi-value">${num(s.ppHC)}</div></div>
+        <div class="kpi"><div class="kpi-label">SHIP HC</div><div class="kpi-value">${num(s.shipHC)}</div></div>
+        <div class="kpi"><div class="kpi-label">IB HC</div><div class="kpi-value">${num(s.ibHC)}</div></div>
+        <div class="kpi"><div class="kpi-label">Total HC Needed</div><div class="kpi-value orange">${num(s.totalHC)}</div><div class="kpi-sub">z absencją ${(S.absenceRate*100).toFixed(0)}%</div></div>
+        <div class="kpi"><div class="kpi-label">Weekly Hours</div><div class="kpi-value">${num(s.wkH,0)}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-body-0 tscroll"><table><thead><tr>
+          <th></th>${s.days.map(d=>`<th class="td-r" style="font-size:11px">${fmtDate(d.date)}</th>`).join('')}<th class="td-r">∑</th>
+        </tr></thead><tbody>
+          <tr><td class="fw6 c2">IB Plan</td>${s.days.map(d=>`<td class="td-r mono">${num(S.dailyPlans[d.dk]?.ib??d.ib)}</td>`).join('')}<td class="td-r fw6 cblue mono">${num(s.ib)}</td></tr>
+          <tr><td class="fw6 c2">OB Plan</td>${s.days.map(d=>`<td class="td-r mono">${num(S.dailyPlans[d.dk]?.ob??d.ob)}</td>`).join('')}<td class="td-r fw6 cblue mono">${num(s.ob)}</td></tr>
+          <tr style="background:#edfaf3"><td class="fw6 cgreen">Throughput</td>${s.days.map(d=>{const p=S.dailyPlans[d.dk]||{ib:d.ib,ob:d.ob};return`<td class="td-r fw6 mono cgreen">${num((p.ib||0)+(p.ob||0))}</td>`}).join('')}<td class="td-r fw6 mono cgreen">${num(s.ib+s.ob)}</td></tr>
+        </tbody></table></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// HEADCOUNT PROJECTION
+// ═══════════════════════════════════════════════════
+function setRotMode(m){
+  S.rotMode=m;
+  document.getElementById('rseg-p').classList.toggle('active',m==='percent');
+  document.getElementById('rseg-f').classList.toggle('active',m==='fixed');
+  document.getElementById('rpct-info').style.display=m==='percent'?'flex':'none';
+  document.getElementById('rfix-wrap').style.display=m==='fixed'?'flex':'none';
+  saveSettings();
+  renderHC();
+}
+function getAvgAgencyReal(){
+  const all=[];
+  S.agencies.forEach(a=>{ const vals=Object.values(S.agencyReal[a.id]||{}).filter(v=>v!=null); if(vals.length)all.push(vals.reduce((s,v)=>s+v,0)/vals.length/100); });
+  return all.length?all.reduce((s,v)=>s+v,0)/all.length:1;
+}
+function renderHC(){
+  const el=document.getElementById('hc_content');
+  const weeks=getFullWeeks();
+  if(!weeks.length){el.innerHTML='<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  const avgRot=getAvgRotation();
+  if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
+  const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed;
+  const usePercent=S.rotMode==='percent';
+  const avgReal=getAvgAgencyReal();
+  let hc=getTotalHC(), trainees=[], rows=[];
+  for(let i=0;i<weeks.length;i++){
+    const wkN=isoWeek(weeks[i].start);
+    const s=calcWeek(weeks[i].days);
+    const needed=s.totalHC;
+    const traineeEff=trainees.reduce((sum,t)=>sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
+    const effectiveHC=Math.round(hc+traineeEff);
+    const zap=effectiveHC-needed;
+    let rec=null;
+    if(i+3<weeks.length){
+      const futNeeded=calcWeek(weeks[i+3].days).totalHC;
+      let futHC=hc;
+      for(let j=0;j<3;j++) futHC=usePercent&&avgRot!=null?Math.round(futHC*(1-avgRot)):Math.max(0,futHC-rotFixed);
+      const gap=futNeeded-futHC;
+      if(gap>10) rec=Math.ceil(gap/avgReal);
+      else if(gap<-20) rec=gap;
+    }
+    rows.push({wkN,hc:Math.round(hc),effectiveHC,needed,zap,rec,avgReal,wkStart:weeks[i].start});
+    trainees=trainees.map(t=>({...t,weeksLeft:t.weeksLeft-1})).filter(t=>t.weeksLeft>0);
+    const graduated=trainees.filter(t=>t.weeksLeft===0).reduce((s,t)=>s+t.count,0);
+    hc+=graduated; trainees=trainees.filter(t=>t.weeksLeft>0);
+    if(usePercent&&avgRot!=null) hc=Math.round(hc*(1-avgRot)); else hc=Math.max(0,hc-rotFixed);
+    if(rec!=null&&rec>0) trainees.push({weeksLeft:3,count:rec});
+  }
+  let html=`<div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
+    <th>WK</th><th>Data</th><th class="td-r">Proj. HC</th><th class="td-r">Efektywny HC</th>
+    <th class="td-r">HC Needed</th><th class="td-r">Zapotrzebowanie</th><th class="td-r">Sugestia wejść</th><th>Status</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const cls=r.zap>20?'hc-deficit':r.zap<-20?'hc-surplus':'';
+    const zapStr=(r.zap>0?'+':'')+num(r.zap);
+    const zapC=r.zap>=0?'cgreen':'cred';
+    const badge=r.zap>20?`<span class="badge b-red">−${Math.abs(r.zap)} niedobór</span>`:r.zap<-20?`<span class="badge b-green">+${Math.abs(r.zap)} nadwyżka</span>`:`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
+    const recHtml=r.rec==null?'<span class="c3">—</span>':r.rec>0?`<span class="fw6 cgreen">+${r.rec} os.</span><span class="text-xs c2" style="display:block">real. ${(r.avgReal*100).toFixed(0)}%</span>`:`<span class="fw6 cred">${r.rec} redukcja</span>`;
+    html+=`<tr class="${cls}"><td class="fw7 cblue">WK${r.wkN}</td><td class="c2 text-sm">${r.wkStart.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'})}</td><td class="td-r mono">${num(r.hc)}</td><td class="td-r mono c2">${num(r.effectiveHC)}</td><td class="td-r mono fw6">${num(r.needed)}</td><td class="td-r mono fw6 ${zapC}">${zapStr}</td><td class="td-r">${recHtml}</td><td>${badge}</td></tr>`;
+  });
+  html+=`</tbody></table></div></div><div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">Efektywny HC uwzględnia stażystów (60%→75%→85%→100% po 3 tygodniach). Sugestia wejść koryguje o średnią realizację agencji (${(getAvgAgencyReal()*100).toFixed(0)}%).</div></div>`;
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+document.getElementById('fcst_date_notice').style.display='flex';
+bootstrap();
+</script>
+</body>
+</html>
