@@ -427,10 +427,13 @@ function fmtDate(d){
   return days[d.getUTCDay()]+' '+d.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'});
 }
 function isoWeek(d){
+  // For Sunday (warehouse week start), use the next Monday for ISO week number
+  // so that WK labels match standard ISO week of the working days in that week
   const dt=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
-  dt.setUTCDate(dt.getUTCDate()+4-(dt.getUTCDay()||7));
+  if(dt.getUTCDay()===0) dt.setUTCDate(dt.getUTCDate()+1); // Sun→Mon
+  dt.setUTCDate(dt.getUTCDate()+3-(dt.getUTCDay()-1+7)%7); // Thursday of that week
   const y=new Date(Date.UTC(dt.getUTCFullYear(),0,4));
-  return Math.ceil((((dt-y)/86400000)+1+(y.getUTCDay()||7)-5)/7);
+  return Math.ceil((((dt-y)/86400000)+1+((y.getUTCDay()+6)%7)-3)/7);
 }
 // Get last Friday before or on date d
 function lastFriday(d){
@@ -1273,8 +1276,28 @@ function renderHC(){
         sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
       const futEffective=Math.round(futHC+futTraineeEff);
       const gap=futNeeded-futEffective;
-      if(gap>10) rec=Math.ceil(gap/avgReal);      // need to hire
-      else if(gap<-20) rec=Math.round(gap);        // need to reduce
+      if(gap>10){
+        // Need more people in 3 weeks → suggest hiring now
+        rec=Math.ceil(gap/avgReal);
+      } else if(gap<-20){
+        // Would have surplus in 3 weeks — but only suggest reduction if
+        // no deficit expected in any of the next 6 weeks
+        let deficitSoon=false;
+        for(let k=1;k<=6&&i+k<weeks.length;k++){
+          const nearNeeded=calcWeek(weeks[i+k].days).totalHC;
+          let nearHC=hc;
+          const nearTrainees=[...trainees];
+          for(let j=0;j<k;j++){
+            const grad=nearTrainees.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
+            nearTrainees.forEach(t=>t.weeksLeft--);
+            nearHC+=grad;
+            nearHC=usePercent&&avgRot!=null?Math.round(nearHC*(1-avgRot)):Math.max(0,nearHC-rotFixed);
+          }
+          const nearEff=Math.round(nearHC+nearTrainees.filter(t=>t.weeksLeft>0).reduce((s,t)=>s+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0));
+          if(nearNeeded>nearEff+10){deficitSoon=true;break;}
+        }
+        if(!deficitSoon) rec=Math.round(gap); // safe to reduce
+      }
     }
     rows.push({wkN,hc:Math.round(hc),effectiveHC,needed,zap,rec,avgReal,wkStart:weeks[i].start});
     // Advance state for next week
@@ -1292,8 +1315,8 @@ function renderHC(){
   </tr></thead><tbody>`;
   rows.forEach(r=>{
     // zap = effectiveHC - needed
-    // zap > 0 → mamy ZA DUŻO (nadwyżka) → czerwone tło, sugestia redukcji
-    // zap < 0 → mamy ZA MAŁO (niedobór) → zielone tło, sugestia wejść
+    // zap > 0 → nadwyżka (mamy za dużo)
+    // zap < 0 → niedobór (za mało)
     const cls=r.zap>20?'hc-surplus':r.zap<-20?'hc-deficit':'';
     const zapStr=(r.zap>0?'+':'')+num(r.zap);
     const zapC=r.zap>0?'corange':r.zap<0?'cred':'c2';
@@ -1302,8 +1325,9 @@ function renderHC(){
       :r.zap<-20
         ?`<span class="badge b-red">${num(r.zap)} niedobór</span>`
         :`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
-    // rec > 0 → zalecane wejście (za mało ludzi za 3 tygodnie)
-    // rec < 0 → zalecana redukcja (za dużo ludzi za 3 tygodnie)
+    // rec: only show if actionable
+    // rec > 0 → wejście (niedobór za 3 tygodnie)
+    // rec < 0 → redukcja (nadwyżka za 3 tygodnie I brak niedoboru w najbliższych 4 tygodniach)
     const recHtml=r.rec==null?'<span class="c3">—</span>'
       :r.rec>0
         ?`<span class="fw6 cblue">+${r.rec} os. wejście</span><span class="text-xs c2" style="display:block">korekta real. ${(r.avgReal*100).toFixed(0)}%</span>`
