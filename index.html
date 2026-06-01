@@ -227,90 +227,106 @@ input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-
   </div>
 
   <!-- Step 1: date → Step 2: upload -->
-  <div class="g2 gap-16 mb-20" style="grid-template-columns:1fr 340px">
-    <div class="card">
-      <div class="card-head"><div><div class="card-title">Krok 1 — Data obowiązywania prognozy</div><div class="card-sub">Wymagane przed wgraniem pliku</div></div></div>
-      <div class="card-body">
-        <div class="mb-12"><label class="form-label">Prognoza obowiązuje od (niedziela tygodnia)</label>
-          <input type="date" id="fcst_date" onchange="onFcstDateChange()">
-        </div>
-        <div id="fcst_date_notice" class="notice n-orange" style="display:none">
-          <span>⚠️</span><span>Wybierz datę aby odblokować wgrywanie pliku</span>
-        </div>
-        <div id="fcst_date_ok" class="notice n-green" style="display:none">
-          <span>✅</span><span id="fcst_date_ok_text"></span>
-        </div>
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="card" style="flex:1">
-        <div class="card-head"><div class="card-title">Załadowane prognozy</div><button class="btn btn-sm btn-d" onclick="clearForecasts()">Wyczyść</button></div>
-        <div id="fcst_list" style="padding:6px;max-height:160px;overflow-y:auto">
-          <div class="empty" style="padding:20px"><span class="text-sm c2">Brak prognoz</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Step 2: upload (locked until date chosen) -->
-  <div class="card mb-20" id="upload_card">
-    <div class="card-head"><div><div class="card-title">Krok 2 — Wgraj plik XLSX</div><div class="card-sub" id="upload_card_sub">Wybierz najpierw datę obowiązywania</div></div></div>
-    <div class="card-body">
-      <div class="upload-zone locked" id="dropzone"
-        onclick="if(!this.classList.contains('locked'))document.getElementById('fileInput').click()"
-        ondragover="event.preventDefault();if(!this.classList.contains('locked'))this.classList.add('drag')"
-        ondragleave="this.classList.remove('drag')"
-        ondrop="event.preventDefault();this.classList.remove('drag');if(!this.classList.contains('locked'))handleFile(event.dataTransfer.files[0])">
-        <div style="font-size:36px;margin-bottom:10px">📊</div>
-        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">XPO1_Automated_Forecast_IPT.xlsx</div>
-        <div class="text-sm c2">Zakładka Daily · IB: wiersz 9 · OB/P&amp;P: wiersz 75 (Customer Shipments)</div>
-        <div class="text-xs c3 mt-8">Dewiacje: IB fcst = wiersz 6 · OB fcst = wiersz 65</div>
-      </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
-      <div id="upload_status" style="margin-top:10px;font-size:13px;display:none"></div>
-    </div>
-  </div>
-
-  <!-- Inner tabs -->
+  <!-- TABS -->
   <div class="tabs">
-    <div class="tab active" onclick="showFcstTab('comparison',this)">Porównanie prognoz</div>
-    <div class="tab" onclick="showFcstTab('plans',this)">Plany produkcyjne</div>
-    <div class="tab" onclick="showFcstTab('realization',this)">Realizacja</div>
+    <div class="tab active" onclick="showFcstTab('ib',this)">IB — Prognoza</div>
+    <div class="tab" onclick="showFcstTab('ob',this)">OB — Prognoza</div>
+    <div class="tab" onclick="showFcstTab('real',this)">Realizacja</div>
     <div class="tab" onclick="showFcstTab('deviations',this)">Dewiacje</div>
+    <div class="tab" onclick="showFcstTab('plans',this)">Plany produkcyjne</div>
   </div>
 
-  <div id="pane-comparison" class="pane active">
-    <div class="card"><div class="card-body-0 tscroll" id="cmp_tbl">
-      <div class="empty"><span class="empty-icon">📈</span><div class="empty-title">Wgraj prognozę</div></div>
-    </div></div>
+  <!-- IB MATRIX -->
+  <div id="pane-ib" class="pane active">
+    <div class="flex justify-between items-center mb-12">
+      <div>
+        <div class="fw6">IB — New Vendor Freight + Transfer In</div>
+        <div class="text-sm c2">Wiersze = dni, kolumny = data kiedy prognoza była aktualna. Wklej datę kolumny i wartości.</div>
+      </div>
+      <div class="flex gap-8 items-center">
+        <input type="date" id="ib_new_col_date" style="width:160px">
+        <button class="btn btn-p btn-sm" onclick="addFcstCol('ib')">+ Dodaj kolumnę</button>
+        <button class="btn btn-s btn-sm" onclick="importSeedMatrix('ib')">↓ Załaduj historię</button>
+      </div>
+    </div>
+    <div class="card"><div class="card-body-0 tscroll" id="ib_matrix_tbl"></div></div>
   </div>
-  <div id="pane-plans" class="pane">
-    <div class="notice n-blue mb-16"><span>ℹ️</span><div>Plany ładowane automatycznie z pliku (wiersz 9 = IB, wiersz 75 = OB/P&amp;P). Pomarańczowe pole = nadpisane ręcznie. <button class="btn btn-sm btn-g" style="margin-left:8px" onclick="resetPlans()">↺ Resetuj</button></div></div>
-    <div class="card"><div class="card-body-0 tscroll" id="plans_tbl">
-      <div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>
-    </div></div>
+
+  <!-- OB MATRIX -->
+  <div id="pane-ob" class="pane">
+    <div class="flex justify-between items-center mb-12">
+      <div>
+        <div class="fw6">OB — New Workable Assignments</div>
+        <div class="text-sm c2">Wiersze = dni, kolumny = data kiedy prognoza była aktualna.</div>
+      </div>
+      <div class="flex gap-8 items-center">
+        <input type="date" id="ob_new_col_date" style="width:160px">
+        <button class="btn btn-p btn-sm" onclick="addFcstCol('ob')">+ Dodaj kolumnę</button>
+        <button class="btn btn-s btn-sm" onclick="importSeedMatrix('ob')">↓ Załaduj historię</button>
+      </div>
+    </div>
+    <div class="card"><div class="card-body-0 tscroll" id="ob_matrix_tbl"></div></div>
   </div>
-  <div id="pane-realization" class="pane">
-    <div class="notice n-blue mb-16"><span>ℹ️</span><div>CHARGE = realizacja OB · REAL NVF+TSI = realizacja IB. Wpisuj dzień po dniu — dane są zapisywane automatycznie do bazy.</div></div>
-    <div class="card"><div class="card-body-0 tscroll" id="real_tbl">
-      <div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj prognozę</div></div>
-    </div></div>
+
+  <!-- REALIZATION -->
+  <div id="pane-real" class="pane">
+    <div class="flex justify-between items-center mb-12">
+      <div>
+        <div class="fw6">Realizacja dzienna</div>
+        <div class="text-sm c2">CHARGE = realizacja OB · REAL NVF+TSI = realizacja IB. Dane zapisywane automatycznie.</div>
+      </div>
+      <button class="btn btn-s btn-sm" onclick="importSeedReal()">↓ Załaduj historię</button>
+    </div>
+    <div class="card"><div class="card-body-0 tscroll" id="real_matrix_tbl"></div></div>
   </div>
+
+  <!-- DEVIATIONS -->
   <div id="pane-deviations" class="pane">
     <div class="g2 gap-16 mb-16">
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Dewiacje FCST (prognoza vs prognoza)</div><div class="card-sub">Porównanie wersji prognoz dla tego samego dnia</div></div></div>
-        <div class="card-body-0 tscroll" id="dev_fcst_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Min. 2 prognozy</span></div></div>
+        <div class="card-head"><div><div class="card-title">Dewiacje FCST (D0 vs D-1 vs Piątek)</div><div class="card-sub">Porównanie wersji prognoz dla tego samego dnia</div></div></div>
+        <div class="card-body-0 tscroll" id="dev_fcst_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Dodaj min. 2 kolumny prognozy</span></div></div>
       </div>
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Dewiacje realizacji (real vs piątkowy FCST)</div><div class="card-sub">Rzeczywiste wykonanie vs prognoza z poprzedniego piątku</div></div></div>
+        <div class="card-head"><div><div class="card-title">Realizacja vs prognoza piątkowa</div><div class="card-sub">Real (CHARGE/NVF+TSI) vs prognoza z piątku poprzedzającego tydzień</div></div></div>
         <div class="card-body-0 tscroll" id="dev_real_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Wpisz realizację</span></div></div>
       </div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title">Wzorce dewiacji per dzień tygodnia</div></div>
-      <div class="card-body-0 tscroll" id="dev_patterns_tbl"><div class="empty" style="padding:32px"><span class="text-sm c2">Wpisz realizację</span></div></div>
+      <div class="card-body-0 tscroll" id="dev_patterns_tbl"></div>
     </div>
+  </div>
+
+  <!-- PLANS -->
+  <div id="pane-plans" class="pane">
+    <div class="notice n-blue mb-16"><span>ℹ️</span><div>Plany produkcyjne — wiersze 9 (IB) i 75 (OB/P&P) z pliku XPO1. Pomarańczowe = nadpisane ręcznie.
+      <button class="btn btn-sm btn-g" style="margin-left:8px" onclick="resetPlans()">↺ Resetuj do fcst</button>
+      <button class="btn btn-sm btn-g" style="margin-left:4px" onclick="loadPlansFromXLSX()">📂 Wgraj XLSX</button>
+    </div></div>
+    <div id="xlsx_upload_area" style="display:none" class="mb-16">
+      <div class="card">
+        <div class="card-body">
+          <div class="mb-8"><label class="form-label">Data obowiązywania prognozy (wymagana)</label>
+            <input type="date" id="fcst_date" onchange="onFcstDateChange()" style="width:200px">
+          </div>
+          <div class="upload-zone locked" id="dropzone"
+            onclick="if(!this.classList.contains('locked'))document.getElementById('fileInput').click()"
+            ondragover="event.preventDefault();if(!this.classList.contains('locked'))this.classList.add('drag')"
+            ondragleave="this.classList.remove('drag')"
+            ondrop="event.preventDefault();this.classList.remove('drag');if(!this.classList.contains('locked'))handleFile(event.dataTransfer.files[0])">
+            <div style="font-size:28px;margin-bottom:8px">📊</div>
+            <div class="fw6">XPO1_Automated_Forecast_IPT.xlsx</div>
+            <div class="text-sm c2 mt-8">IB: wiersz 9 · OB/P&P: wiersz 75</div>
+          </div>
+          <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+          <div id="upload_status" style="margin-top:8px;font-size:13px;display:none"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card"><div class="card-body-0 tscroll" id="plans_tbl">
+      <div class="empty"><span class="empty-icon">📋</span><div class="empty-title">Wgraj plik XLSX</div></div>
+    </div></div>
   </div>
 </div>
 
@@ -403,6 +419,9 @@ const sbDel  = (t,q)     => sb('DELETE',t,null,q);
 const S = {
   tph:{pp:18,ship:40,ib:29}, hoursPerWorker:55, absenceRate:0.05,
   forecasts:[], activeFcstId:null,
+  ibMatrix:{},     // {date_key: {fcst_date: value}}
+  obMatrix:{},     // {date_key: {fcst_date: value}}
+  fcstDates:[],    // sorted list of forecast version dates
   dailyPlans:{},   // {dk:{ib,ob,manual}}
   dailyReal:{},    // {dk:{ob_charge,ib_real}}
   agencies:[], agencyHC:{}, agencyReal:{},
@@ -467,6 +486,30 @@ function setDbStatus(state,msg){
 }
 
 // ═══════════════════════════════════════════════════
+// SEED HISTORICAL DATA (from DOD_FCST_COMPARISON)
+// ═══════════════════════════════════════════════════
+async function seedHistoricalData(type){
+  // Fetch seed data from wms_fcst_matrix - data already there from SQL seed
+  // Just reload from DB
+  const rows = await sbGet('wms_fcst_matrix','?order=date_key.asc,fcst_date.asc&limit=20000');
+  S.ibMatrix={}; S.obMatrix={}; S.fcstDates=new Set();
+  (rows||[]).forEach(r=>{
+    if(!S.ibMatrix[r.date_key]) S.ibMatrix[r.date_key]={};
+    if(!S.obMatrix[r.date_key]) S.obMatrix[r.date_key]={};
+    if(r.ib!=null) S.ibMatrix[r.date_key][r.fcst_date]=r.ib;
+    if(r.ob!=null) S.obMatrix[r.date_key][r.fcst_date]=r.ob;
+    S.fcstDates.add(r.fcst_date);
+  });
+  S.fcstDates=[...S.fcstDates].sort();
+}
+async function seedHistoricalReal(){
+  const rows = await sbGet('wms_daily_real','?order=date_key.asc');
+  (rows||[]).forEach(r=>{
+    S.dailyReal[r.date_key]={ob_charge:r.ob_charge,ib_real:r.ib_real};
+  });
+}
+
+// ═══════════════════════════════════════════════════
 // BOOTSTRAP — load all data from Supabase
 // ═══════════════════════════════════════════════════
 async function bootstrap(){
@@ -484,19 +527,31 @@ async function bootstrap(){
       S.rotMode=d.rot_mode||'percent';
       S.rotFixed=d.rot_fixed||10;
     }
-    // Forecasts
-    const fcsts = await sbGet('wms_forecasts','?order=created_at.desc');
-    S.forecasts=(fcsts||[]).map(f=>({
-      id:f.id, label:f.label, uploadDate:f.upload_date, startDate:f.start_date,
-      data:(f.data||[]).map(d=>({...d, date:new Date(d.dk+'T00:00:00Z')}))
-    }));
-    if(S.forecasts.length) S.activeFcstId=S.forecasts[0].id;
+    // Forecast matrix IB/OB
+    const matrixRows = await sbGet('wms_fcst_matrix','?order=date_key.asc,fcst_date.asc&limit=20000');
+    S.ibMatrix={}; S.obMatrix={};
+    S.fcstDates=new Set();
+    (matrixRows||[]).forEach(r=>{
+      if(!S.ibMatrix[r.date_key]) S.ibMatrix[r.date_key]={};
+      if(!S.obMatrix[r.date_key]) S.obMatrix[r.date_key]={};
+      if(r.ib!=null) S.ibMatrix[r.date_key][r.fcst_date]=r.ib;
+      if(r.ob!=null) S.obMatrix[r.date_key][r.fcst_date]=r.ob;
+      S.fcstDates.add(r.fcst_date);
+    });
+    S.fcstDates=[...S.fcstDates].sort();
     // Daily plans
     const plans = await sbGet('wms_daily_plans','?order=date_key.asc');
     (plans||[]).forEach(p=>{ S.dailyPlans[p.date_key]={ib:p.ib,ob:p.ob,manual:p.manual}; });
     // Daily realization
     const reals = await sbGet('wms_daily_real','?order=date_key.asc');
     (reals||[]).forEach(r=>{ S.dailyReal[r.date_key]={ob_charge:r.ob_charge,ib_real:r.ib_real}; });
+    // Forecasts (legacy - for plans tab)
+    const fcsts = await sbGet('wms_forecasts','?order=created_at.desc');
+    S.forecasts=(fcsts||[]).map(f=>({
+      id:f.id, label:f.label, uploadDate:f.upload_date, startDate:f.start_date,
+      data:(f.data||[]).map(d=>({...d, date:new Date(d.dk+'T00:00:00Z')}))
+    }));
+    if(S.forecasts.length) S.activeFcstId=S.forecasts[0].id;
     // Agencies
     const agencies = await sbGet('wms_agencies','?order=sort_order.asc');
     S.agencies=agencies||[];
@@ -524,7 +579,8 @@ async function bootstrap(){
 
     setDbStatus('ok','✓ Połączono');
     document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
-    renderFcstList();
+    renderMatrix('ib');
+    renderRealMatrix();
     renderAgency();
     renderIDL();
 
@@ -569,10 +625,15 @@ function showFcstTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('pane-'+name).classList.add('active');
   el.classList.add('active');
-  if(name==='comparison') renderComparison();
+  if(name==='ib') renderMatrix('ib');
+  if(name==='ob') renderMatrix('ob');
+  if(name==='real') renderRealMatrix();
   if(name==='plans') renderPlans();
-  if(name==='realization') renderRealization();
   if(name==='deviations') renderDeviations();
+}
+function loadPlansFromXLSX(){
+  const area=document.getElementById('xlsx_upload_area');
+  area.style.display=area.style.display==='none'?'block':'none';
 }
 
 // ═══════════════════════════════════════════════════
@@ -741,7 +802,193 @@ async function clearForecasts(){
 }
 
 // ═══════════════════════════════════════════════════
-// COMPARISON TABLE
+// FORECAST MATRIX — Excel-style IB/OB tables
+// ═══════════════════════════════════════════════════
+
+// Add a new forecast column (date) to IB or OB matrix
+async function addFcstCol(type){
+  const inputId = type==='ib'?'ib_new_col_date':'ob_new_col_date';
+  const fd = document.getElementById(inputId).value;
+  if(!fd){alert('Wybierz datę kolumny');return;}
+  if(S.fcstDates.includes(fd)){alert('Ta data już istnieje');return;}
+  S.fcstDates.push(fd); S.fcstDates.sort();
+  renderMatrix(type);
+}
+
+// Build matrix table
+function renderMatrix(type){
+  const elId = type==='ib'?'ib_matrix_tbl':'ob_matrix_tbl';
+  const el = document.getElementById(elId);
+  const matrix = type==='ib'?S.ibMatrix:S.obMatrix;
+  const fds = S.fcstDates;
+
+  // All unique date_keys
+  const allDks = new Set([
+    ...Object.keys(matrix),
+    ...Object.keys(S.dailyPlans)
+  ]);
+  const dks = [...allDks].sort();
+
+  if(!dks.length&&!fds.length){
+    el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych. Kliknij "Załaduj historię" lub dodaj kolumnę.</span></div>';
+    return;
+  }
+
+  // Show last 30 days of row dates + future if any
+  const today = new Date().toISOString().split('T')[0];
+  // Show all dks
+  const visibleDks = dks;
+
+  // Show last 14 fcst columns + any future
+  const visFds = fds.slice(-20);
+
+  const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
+  function dowLabel(dk){
+    const d=new Date(dk+'T00:00:00Z');
+    return days[d.getUTCDay()];
+  }
+  function wkLabel(dk){
+    const d=new Date(dk+'T00:00:00Z');
+    return isoWeek(d);
+  }
+
+  let lastWk=null;
+  let html=`<table style="font-size:12px"><thead>
+    <tr>
+      <th style="position:sticky;left:0;z-index:2;background:#f5f5f7;min-width:40px">WK</th>
+      <th style="position:sticky;left:40px;z-index:2;background:#f5f5f7;min-width:80px">Data</th>
+      ${visFds.map(fd=>{
+        const isFri=new Date(fd+'T00:00:00Z').getUTCDay()===5;
+        return `<th class="td-r" style="min-width:90px;${isFri?'border-left:2px solid var(--blue);color:var(--blue)':''}">${fd.slice(5)}</th>`;
+      }).join('')}
+    </tr>
+  </thead><tbody>`;
+
+  for(const dk of visibleDks){
+    const d=new Date(dk+'T00:00:00Z');
+    const wk=isoWeek(d); const dow=d.getUTCDay();
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const isSun=dow===0;
+    const rowStyle=isSun?'border-top:2px solid #e5e5ea':'';
+    const isPast=dk<today;
+    const rowBg=isPast?'background:#fafafa':'';
+
+    html+=`<tr style="${rowStyle};${rowBg}">
+      <td style="position:sticky;left:0;z-index:1;background:${isPast?'#fafafa':'#fff'};font-size:11px">${wkL}</td>
+      <td style="position:sticky;left:40px;z-index:1;background:${isPast?'#fafafa':'#fff'};white-space:nowrap;font-size:12px">
+        <span style="color:var(--text2)">${days[dow]}</span> ${dk.slice(5)}
+      </td>
+      ${visFds.map(fd=>{
+        const val=matrix[dk]?.[fd];
+        const isFri=new Date(fd+'T00:00:00Z').getUTCDay()===5;
+        const borderL=isFri?'border-left:2px solid rgba(0,113,227,.2)':'';
+        return `<td class="td-r" style="${borderL}"><input class="ii" type="number"
+          value="${val!=null?val:''}" placeholder="—"
+          onchange="setMatrixVal('${type}','${dk}','${fd}',this.value)"
+          style="width:82px;font-size:12px"></td>`;
+      }).join('')}
+    </tr>`;
+  }
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+async function setMatrixVal(type, dk, fd, val){
+  const v = parseFloat(val)||null;
+  const matrix = type==='ib'?S.ibMatrix:S.obMatrix;
+  if(!matrix[dk]) matrix[dk]={};
+  matrix[dk][fd]=v;
+  if(!S.fcstDates.includes(fd)){S.fcstDates.push(fd);S.fcstDates.sort();}
+  // Save to Supabase
+  const row={date_key:dk,fcst_date:fd,updated_at:new Date().toISOString()};
+  if(type==='ib') row.ib=v; else row.ob=v;
+  // Merge with existing row if other field exists
+  const existing = type==='ib'
+    ? (S.obMatrix[dk]?.[fd]!=null?{ob:S.obMatrix[dk][fd]}:{})
+    : (S.ibMatrix[dk]?.[fd]!=null?{ib:S.ibMatrix[dk][fd]}:{});
+  await sbPost('wms_fcst_matrix',[{...row,...existing}]);
+}
+
+// Seed from historical data (loaded from DOD file)
+async function importSeedMatrix(type){
+  if(!confirm(`Załadować historię ${type.toUpperCase()} z pliku DOD_FCST_COMPARISON? To może chwilę potrwać.`))return;
+  setDbStatus('loading','Ładowanie historii…');
+  try{
+    // Load data via fetch from seed endpoint or use embedded minimal data
+    // We'll trigger a special seed function
+    await seedHistoricalData(type);
+    renderMatrix(type);
+    setDbStatus('ok','✓ Historia załadowana');
+  }catch(e){
+    setDbStatus('err','Błąd: '+e.message);
+  }
+}
+
+async function importSeedReal(){
+  if(!confirm('Załadować historyczną realizację z DOD_FCST_COMPARISON?'))return;
+  setDbStatus('loading','Ładowanie…');
+  try{
+    await seedHistoricalReal();
+    renderRealMatrix();
+    setDbStatus('ok','✓ Historia załadowana');
+  }catch(e){
+    setDbStatus('err','Błąd: '+e.message);
+  }
+}
+
+// Render realization matrix
+function renderRealMatrix(){
+  const el=document.getElementById('real_matrix_tbl');
+  // Get all date_keys from plans or matrix
+  const allDks=new Set([
+    ...Object.keys(S.dailyPlans),
+    ...Object.keys(S.dailyReal),
+    ...Object.keys(S.ibMatrix)
+  ]);
+  const dks=[...allDks].sort().filter(dk=>dk>='2026-01-01');
+  if(!dks.length){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
+
+  const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
+  const today=new Date().toISOString().split('T')[0];
+  let lastWk=null;
+  let html=`<table><thead><tr>
+    <th>WK</th><th>Data</th>
+    <th class="td-r">OB Plan</th><th class="td-r">CHARGE (real. OB)</th>
+    <th class="td-r">IB Plan</th><th class="td-r">REAL NVF+TSI</th>
+    <th class="td-r">Δ OB</th><th class="td-r">Δ IB</th>
+  </tr></thead><tbody>`;
+
+  for(const dk of dks){
+    const d=new Date(dk+'T00:00:00Z');
+    const wk=isoWeek(d); const dow=d.getUTCDay();
+    const isSun=dow===0;
+    const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
+    const plan=S.dailyPlans[dk]||{};
+    const real=S.dailyReal[dk]||{};
+    const pOb=plan.ob||0; const pIb=plan.ib||0;
+    const rOb=real.ob_charge; const rIb=real.ib_real;
+    const dOb=(rOb!=null&&pOb>0)?((rOb-pOb)/pOb):null;
+    const dIb=(rIb!=null&&pIb>0)?((rIb-pIb)/pIb):null;
+    const isPast=dk<=today;
+    html+=`<tr style="${isSun?'border-top:2px solid #e5e5ea':''}${!isPast?';background:#f9f9ff':''}">
+      <td>${wkL}</td>
+      <td class="c2" style="white-space:nowrap;font-size:12px"><span style="color:var(--text3)">${days[dow]}</span> ${dk.slice(5)}</td>
+      <td class="td-r c2 mono">${num(pOb)}</td>
+      <td class="td-r"><input class="ii" type="number" value="${rOb!=null?rOb:''}" placeholder="—"
+        onchange="setReal('${dk}','ob_charge',this.value)" style="width:100px"></td>
+      <td class="td-r c2 mono">${num(pIb)}</td>
+      <td class="td-r"><input class="ii" type="number" value="${rIb!=null?rIb:''}" placeholder="—"
+        onchange="setReal('${dk}','ib_real',this.value)" style="width:100px"></td>
+      <td class="td-r">${diffBadge(dOb)}</td>
+      <td class="td-r">${diffBadge(dIb)}</td>
+    </tr>`;
+  }
+  el.innerHTML=html+'</tbody></table>';
+}
+
+// ═══════════════════════════════════════════════════
+// COMPARISON TABLE (legacy - kept for plans tab context)
+
 // ═══════════════════════════════════════════════════
 function renderComparison(){
   const el=document.getElementById('cmp_tbl');
@@ -890,39 +1137,76 @@ function renderDeviations(){
   renderDevPatterns();
 }
 
+// Get the latest forecast version for a given date (D0 = most recent fcst_date <= date)
+function getFcstForDate(matrix, dk, fcstDate){
+  if(!matrix[dk]) return null;
+  return matrix[dk][fcstDate]??null;
+}
+// Get last Friday's fcst_date key on or before a given date
+function getLastFridayFcstDate(beforeDk){
+  const d=new Date(beforeDk+'T00:00:00Z');
+  // Go back to find last Friday
+  for(let i=0;i<14;i++){
+    d.setUTCDate(d.getUTCDate()-1);
+    if(d.getUTCDay()===5){
+      const fd=dateKey(d);
+      // Find latest fcst_date in S.fcstDates <= fd
+      const match=[...S.fcstDates].filter(x=>x<=fd).pop();
+      return match||null;
+    }
+  }
+  return null;
+}
+
 function renderDevFcst(){
   const el=document.getElementById('dev_fcst_tbl');
-  if(S.forecasts.length<2){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Wymagane min. 2 prognozy</span></div>';return;}
-  const sorted=[...S.forecasts].sort((a,b)=>b.uploadDate.localeCompare(a.uploadDate));
-  const today=sorted[0], prev=sorted[1];
-  const lFri=lastFriday(new Date());
-  const friFcst=sorted.find(f=>f.uploadDate<=lFri)||sorted[sorted.length-1];
+  const fds=S.fcstDates;
+  if(fds.length<2){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Dodaj min. 2 kolumny prognozy</span></div>';return;}
 
-  const getV=(fcst,dk,field)=>{ const d=fcst?.data?.find(x=>x.dk===dk); return d?d[field]:null; };
-  const dks=[...new Set(today.data.map(d=>d.dk))].sort().slice(0,90);
+  const today=fds[fds.length-1]; // latest fcst version
+  const prev=fds[fds.length-2];  // previous
+  const lFriDk=lastFriday(new Date());
+  const friFd=[...fds].filter(f=>f<=lFriDk).pop()||fds[0];
 
-  let html=`<table><thead><tr>
-    <th>WK</th><th>Data</th>
-    <th class="td-r">IB fcst dziś</th><th class="td-r">IB fcst wczoraj</th><th class="td-r">Δ D0/D-1 IB</th>
-    <th class="td-r">IB fcst piątek</th><th class="td-r">Δ D0/Piątek IB</th>
-    <th class="td-r">OB fcst dziś</th><th class="td-r">OB fcst wczoraj</th><th class="td-r">Δ D0/D-1 OB</th>
-    <th class="td-r">OB fcst piątek</th><th class="td-r">Δ D0/Piątek OB</th>
-  </tr></thead><tbody>`;
+  const allDks=new Set([...Object.keys(S.ibMatrix),...Object.keys(S.obMatrix)]);
+  const dks=[...allDks].sort().slice(0,150);
+  const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
   let lastWk=null;
+  let html=`<table style="font-size:12px"><thead><tr>
+    <th>WK</th><th>Data</th>
+    <th class="td-r">IB D0<br><span style="font-weight:400;color:var(--text2)">${today.slice(5)}</span></th>
+    <th class="td-r">IB D-1<br><span style="font-weight:400;color:var(--text2)">${prev.slice(5)}</span></th>
+    <th class="td-r">Δ IB D0/D-1</th>
+    <th class="td-r">IB Piątek<br><span style="font-weight:400;color:var(--orange)">${friFd.slice(5)}</span></th>
+    <th class="td-r">Δ IB D0/Pt</th>
+    <th class="td-r">OB D0<br><span style="font-weight:400;color:var(--text2)">${today.slice(5)}</span></th>
+    <th class="td-r">OB D-1<br><span style="font-weight:400;color:var(--text2)">${prev.slice(5)}</span></th>
+    <th class="td-r">Δ OB D0/D-1</th>
+    <th class="td-r">OB Piątek<br><span style="font-weight:400;color:var(--orange)">${friFd.slice(5)}</span></th>
+    <th class="td-r">Δ OB D0/Pt</th>
+  </tr></thead><tbody>`;
   for(const dk of dks){
     const d=new Date(dk+'T00:00:00Z'); const wk=isoWeek(d); const isSun=d.getUTCDay()===0;
     const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
-    // Use ib_fcst (row 6) and ob_fcst (row 65)
-    const ibT=getV(today,dk,'ib_fcst'), ibP=getV(prev,dk,'ib_fcst'), ibF=getV(friFcst,dk,'ib_fcst');
-    const obT=getV(today,dk,'ob_fcst'), obP=getV(prev,dk,'ob_fcst'), obF=getV(friFcst,dk,'ob_fcst');
-    const dIbP=(ibT&&ibP)?(ibT-ibP)/ibP:null, dIbF=(ibT&&ibF)?(ibT-ibF)/ibF:null;
-    const dObP=(obT&&obP)?(obT-obP)/obP:null, dObF=(obT&&obF)?(obT-obF)/obF:null;
+    const ibT=S.ibMatrix[dk]?.[today], ibP=S.ibMatrix[dk]?.[prev], ibF=S.ibMatrix[dk]?.[friFd];
+    const obT=S.obMatrix[dk]?.[today], obP=S.obMatrix[dk]?.[prev], obF=S.obMatrix[dk]?.[friFd];
+    const dIbP=(ibT!=null&&ibP!=null&&ibP>0)?(ibT-ibP)/ibP:null;
+    const dIbF=(ibT!=null&&ibF!=null&&ibF>0)?(ibT-ibF)/ibF:null;
+    const dObP=(obT!=null&&obP!=null&&obP>0)?(obT-obP)/obP:null;
+    const dObF=(obT!=null&&obF!=null&&obF>0)?(obT-obF)/obF:null;
     html+=`<tr class="${isSun?'wk-sep':''}">
-      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d)}</td>
-      <td class="td-r mono cblue">${num(ibT)}</td><td class="td-r mono c2">${num(ibP)}</td><td class="td-r">${diffBadge(dIbP)}</td>
-      <td class="td-r mono corange">${num(ibF)}</td><td class="td-r">${diffBadge(dIbF)}</td>
-      <td class="td-r mono cblue">${num(obT)}</td><td class="td-r mono c2">${num(obP)}</td><td class="td-r">${diffBadge(dObP)}</td>
-      <td class="td-r mono corange">${num(obF)}</td><td class="td-r">${diffBadge(dObF)}</td>
+      <td style="font-size:11px">${wkL}</td>
+      <td class="c2" style="white-space:nowrap;font-size:11px"><span style="color:var(--text3)">${days[d.getUTCDay()]}</span> ${dk.slice(5)}</td>
+      <td class="td-r mono cblue" style="font-size:12px">${num(ibT)}</td>
+      <td class="td-r mono c2" style="font-size:12px">${num(ibP)}</td>
+      <td class="td-r">${diffBadge(dIbP)}</td>
+      <td class="td-r mono corange" style="font-size:12px">${num(ibF)}</td>
+      <td class="td-r">${diffBadge(dIbF)}</td>
+      <td class="td-r mono cblue" style="font-size:12px">${num(obT)}</td>
+      <td class="td-r mono c2" style="font-size:12px">${num(obP)}</td>
+      <td class="td-r">${diffBadge(dObP)}</td>
+      <td class="td-r mono corange" style="font-size:12px">${num(obF)}</td>
+      <td class="td-r">${diffBadge(dObF)}</td>
     </tr>`;
   }
   el.innerHTML=html+'</tbody></table>';
@@ -930,39 +1214,39 @@ function renderDevFcst(){
 
 function renderDevReal(){
   const el=document.getElementById('dev_real_tbl');
-  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
-  if(!fcst){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
+  const allDks=new Set([...Object.keys(S.dailyReal),...Object.keys(S.ibMatrix)]);
+  const dks=[...allDks].sort();
+  if(!dks.length){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
 
-  // For each day: get the Friday forecast that was in force that week
-  // Friday forecast = last forecast whose startDate <= Sunday of that week
-  const getFridayFcstForWeek=(sundayDk)=>{
-    const friFk=fridayBeforeWeek(sundayDk);
-    const sorted=[...S.forecasts].sort((a,b)=>b.startDate.localeCompare(a.startDate));
-    return sorted.find(f=>f.startDate<=friFk)||sorted[sorted.length-1];
-  };
-
-  let html=`<table><thead><tr>
+  const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
+  let lastWk=null, currentFriday=null;
+  let html=`<table style="font-size:12px"><thead><tr>
     <th>WK</th><th>Data</th>
     <th class="td-r">OB real.</th><th class="td-r">OB fcst piątek</th><th class="td-r">Δ OB</th>
     <th class="td-r">IB real.</th><th class="td-r">IB fcst piątek</th><th class="td-r">Δ IB</th>
   </tr></thead><tbody>`;
-  let lastWk=null, lastFriFcst=null, lastSunDk=null;
-  for(const d of fcst.data){
-    const isSun=d.date.getUTCDay()===0;
-    if(isSun){ lastSunDk=d.dk; lastFriFcst=getFridayFcstForWeek(d.dk); }
-    const wk=isoWeek(d.date);
+
+  for(const dk of dks){
+    const d=new Date(dk+'T00:00:00Z');
+    const wk=isoWeek(d); const isSun=d.getUTCDay()===0;
+    // On Sunday (start of warehouse week), find the preceding Friday's fcst version
+    if(isSun){ currentFriday=getLastFridayFcstDate(dk); }
     const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
-    const rOb=S.dailyReal[d.dk]?.ob_charge, rIb=S.dailyReal[d.dk]?.ib_real;
-    const friFcstDay=lastFriFcst?.data?.find(x=>x.dk===d.dk);
-    const fObFcst=friFcstDay?.ob_fcst, fIbFcst=friFcstDay?.ib_fcst;
-    const dOb=(rOb!=null&&fObFcst)?(rOb-fObFcst)/fObFcst:null;
-    const dIb=(rIb!=null&&fIbFcst)?(rIb-fIbFcst)/fIbFcst:null;
-    html+=`<tr class="${isSun?'wk-sep':''}">
-      <td>${wkL}</td><td class="c2" style="white-space:nowrap">${fmtDate(d.date)}</td>
-      <td class="td-r mono ${rOb!=null?'cgreen':''}">${rOb!=null?num(rOb):'—'}</td>
-      <td class="td-r mono c2">${fObFcst!=null?num(fObFcst):'—'}</td><td class="td-r">${diffBadge(dOb)}</td>
-      <td class="td-r mono ${rIb!=null?'cgreen':''}">${rIb!=null?num(rIb):'—'}</td>
-      <td class="td-r mono c2">${fIbFcst!=null?num(fIbFcst):'—'}</td><td class="td-r">${diffBadge(dIb)}</td>
+    const real=S.dailyReal[dk]||{};
+    const rOb=real.ob_charge, rIb=real.ib_real;
+    const fObFcst=currentFriday?S.obMatrix[dk]?.[currentFriday]:null;
+    const fIbFcst=currentFriday?S.ibMatrix[dk]?.[currentFriday]:null;
+    const dOb=(rOb!=null&&fObFcst!=null&&fObFcst>0)?(rOb-fObFcst)/fObFcst:null;
+    const dIb=(rIb!=null&&fIbFcst!=null&&fIbFcst>0)?(rIb-fIbFcst)/fIbFcst:null;
+    html+=`<tr style="${isSun?'border-top:2px solid #e5e5ea':''}">
+      <td style="font-size:11px">${wkL}</td>
+      <td style="white-space:nowrap;font-size:11px"><span class="c3">${days[d.getUTCDay()]}</span> ${dk.slice(5)}</td>
+      <td class="td-r mono ${rOb!=null?'cgreen':''}" style="font-size:12px">${rOb!=null?num(rOb):'—'}</td>
+      <td class="td-r mono c2" style="font-size:12px">${fObFcst!=null?num(fObFcst):'—'}</td>
+      <td class="td-r">${diffBadge(dOb)}</td>
+      <td class="td-r mono ${rIb!=null?'cgreen':''}" style="font-size:12px">${rIb!=null?num(rIb):'—'}</td>
+      <td class="td-r mono c2" style="font-size:12px">${fIbFcst!=null?num(fIbFcst):'—'}</td>
+      <td class="td-r">${diffBadge(dIb)}</td>
     </tr>`;
   }
   el.innerHTML=html+'</tbody></table>';
@@ -970,22 +1254,26 @@ function renderDevReal(){
 
 function renderDevPatterns(){
   const el=document.getElementById('dev_patterns_tbl');
-  const fcst=S.forecasts.find(f=>f.id===S.activeFcstId);
-  if(!fcst){el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych</span></div>';return;}
   const dowNames=['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'];
   const byDow=Array.from({length:7},()=>({ob:[],ib:[]}));
-  for(const d of fcst.data){
-    const r=S.dailyReal[d.dk]; if(!r) continue;
-    const pOb=S.dailyPlans[d.dk]?.ob||0, pIb=S.dailyPlans[d.dk]?.ib||0;
-    const dow=d.date.getUTCDay();
-    if(pOb>0&&r.ob_charge!=null) byDow[dow].ob.push(r.ob_charge/pOb-1);
-    if(pIb>0&&r.ib_real!=null) byDow[dow].ib.push(r.ib_real/pIb-1);
+  // Use friday fcst vs real
+  let currentFriday=null;
+  const dks=Object.keys(S.dailyReal).sort();
+  for(const dk of dks){
+    const d=new Date(dk+'T00:00:00Z');
+    if(d.getUTCDay()===0) currentFriday=getLastFridayFcstDate(dk);
+    const real=S.dailyReal[dk];
+    const fOb=currentFriday?S.obMatrix[dk]?.[currentFriday]:null;
+    const fIb=currentFriday?S.ibMatrix[dk]?.[currentFriday]:null;
+    const dow=d.getUTCDay();
+    if(fOb!=null&&fOb>0&&real.ob_charge!=null) byDow[dow].ob.push(real.ob_charge/fOb-1);
+    if(fIb!=null&&fIb>0&&real.ib_real!=null) byDow[dow].ib.push(real.ib_real/fIb-1);
   }
   const avg=arr=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:null;
-  let html=`<table><thead><tr><th>Dzień</th><th class="td-r">Śr. Δ OB</th><th class="td-r">Śr. Δ IB</th><th>Próbek</th><th>Trend</th></tr></thead><tbody>`;
+  let html=`<table><thead><tr><th>Dzień</th><th class="td-r">Śr. Δ OB vs fcst Pt</th><th class="td-r">Śr. Δ IB vs fcst Pt</th><th>Próbek</th><th>Trend</th></tr></thead><tbody>`;
   for(let i=0;i<7;i++){
     const aOb=avg(byDow[i].ob),aIb=avg(byDow[i].ib);
-    const note=aOb==null?'—':aOb<-0.1?'⚠️ OB systematycznie niedowożony':aOb>0.1?'📈 OB systematycznie przekraczany':'✅ OK';
+    const note=aOb==null?'—':aOb<-0.1?'⚠️ OB systematycznie poniżej fcst':aOb>0.1?'📈 OB systematycznie powyżej fcst':'✅ Zgodny z fcst';
     html+=`<tr><td class="fw6">${dowNames[i]}</td><td class="td-r">${diffBadge(aOb)}</td><td class="td-r">${aIb!=null?diffBadge(aIb):'—'}</td><td class="c2 text-sm">${byDow[i].ob.length} obs.</td><td class="text-sm">${note}</td></tr>`;
   }
   el.innerHTML=html+'</tbody></table>';
