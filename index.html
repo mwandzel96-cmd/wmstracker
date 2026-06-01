@@ -155,7 +155,7 @@ input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-
 .empty{text-align:center;padding:56px 32px;color:var(--text2)}
 .empty-icon{font-size:36px;margin-bottom:10px;display:block;opacity:.4}
 .empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:5px}
-.hc-surplus{background:#edfaf3}.hc-deficit{background:#fff3f2}
+.hc-surplus{background:#fff8ec}.hc-deficit{background:#fff3f2}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#c7c7cc;border-radius:3px}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,113,227,.3);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -1291,20 +1291,23 @@ function renderHC(){
     <th class="td-r">HC Needed</th><th class="td-r">Zapotrzebowanie</th><th class="td-r">Sugestia wejść</th><th>Status</th>
   </tr></thead><tbody>`;
   rows.forEach(r=>{
-    // zap>0 = nadwyżka (mamy więcej niż trzeba) = green
-    // zap<0 = niedobór (za mało ludzi) = red
-    const cls=r.zap<-20?'hc-deficit':r.zap>20?'hc-surplus':'';
+    // zap = effectiveHC - needed
+    // zap > 0 → mamy ZA DUŻO (nadwyżka) → czerwone tło, sugestia redukcji
+    // zap < 0 → mamy ZA MAŁO (niedobór) → zielone tło, sugestia wejść
+    const cls=r.zap>20?'hc-surplus':r.zap<-20?'hc-deficit':'';
     const zapStr=(r.zap>0?'+':'')+num(r.zap);
-    const zapC=r.zap>=0?'cgreen':'cred';
-    const badge=r.zap<-20
-      ?`<span class="badge b-red">${num(r.zap)} niedobór</span>`
-      :r.zap>20
-        ?`<span class="badge b-green">+${num(r.zap)} nadwyżka</span>`
+    const zapC=r.zap>0?'corange':r.zap<0?'cred':'c2';
+    const badge=r.zap>20
+      ?`<span class="badge b-orange">+${num(r.zap)} nadwyżka</span>`
+      :r.zap<-20
+        ?`<span class="badge b-red">${num(r.zap)} niedobór</span>`
         :`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
+    // rec > 0 → zalecane wejście (za mało ludzi za 3 tygodnie)
+    // rec < 0 → zalecana redukcja (za dużo ludzi za 3 tygodnie)
     const recHtml=r.rec==null?'<span class="c3">—</span>'
       :r.rec>0
-        ?`<span class="fw6 cgreen">+${r.rec} os. wejście</span><span class="text-xs c2" style="display:block">korekta real. ${(r.avgReal*100).toFixed(0)}%</span>`
-        :`<span class="fw6 cred">${Math.abs(r.rec)} os. redukcja</span>`;
+        ?`<span class="fw6 cblue">+${r.rec} os. wejście</span><span class="text-xs c2" style="display:block">korekta real. ${(r.avgReal*100).toFixed(0)}%</span>`
+        :`<span class="fw6 corange">${Math.abs(r.rec)} os. redukcja</span>`;
     html+=`<tr class="${cls}"><td class="fw7 cblue">WK${r.wkN}</td><td class="c2 text-sm">${r.wkStart.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'})}</td><td class="td-r mono">${num(r.hc)}</td><td class="td-r mono c2">${num(r.effectiveHC)}</td><td class="td-r mono fw6">${num(r.needed)}</td><td class="td-r mono fw6 ${zapC}">${zapStr}</td><td class="td-r">${recHtml}</td><td>${badge}</td></tr>`;
   });
   html+=`</tbody></table></div></div><div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">Efektywny HC uwzględnia stażystów (60%→75%→85%→100% po 3 tygodniach). Sugestia wejść koryguje o średnią realizację agencji (${(getAvgAgencyReal()*100).toFixed(0)}%).</div></div>`;
