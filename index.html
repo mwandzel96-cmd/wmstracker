@@ -338,7 +338,7 @@ input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-
   </div>
   <div class="card">
     <div class="card-body-0 tscroll">
-      <table><thead><tr><th>Dział</th><th class="td-r">Funkcyjni</th><th class="td-r">Magazynier</th><th class="td-r">OWWS/Man-Up</th><th class="td-r">Shunter</th><th class="td-r">Hours (APT)</th><th></th></tr></thead>
+      <table><thead><tr><th>Dział</th><th class="td-r">Funkcyjni</th><th class="td-r">Magazynier</th><th class="td-r">OWWS/Man-Up</th><th class="td-r">Shunter</th><th class="td-r">Hours</th><th></th></tr></thead>
       <tbody id="idl_tbody"></tbody>
       <tfoot><tr class="tfoot-row" id="idl_tfoot"></tr></tfoot>
       </table>
@@ -772,9 +772,9 @@ function renderComparison(){
   for(const dk of dks){
     const d=new Date(dk+'T00:00:00Z'); const wk=isoWeek(d); const isSun=d.getUTCDay()===0;
     const wkL=wk!==lastWk?`<strong class="cblue">WK${wk}</strong>`:''; lastWk=wk;
-    const ibT=getV(today,dk,'ib'),obT=getV(today,dk,'ob');
-    const ibP=getV(prev,dk,'ib'),obP=getV(prev,dk,'ob');
-    const ibF=getV(friFcst,dk,'ib'),obF=getV(friFcst,dk,'ob');
+    const ibT=getV(today,dk,'ib_fcst'),obT=getV(today,dk,'ob_fcst');
+    const ibP=getV(prev,dk,'ib_fcst'),obP=getV(prev,dk,'ob_fcst');
+    const ibF=getV(friFcst,dk,'ib_fcst'),obF=getV(friFcst,dk,'ob_fcst');
     const dIbP=(ibT&&ibP)?(ibT-ibP)/ibP:null,dObP=(obT&&obP)?(obT-obP)/obP:null;
     const dIbF=(ibT&&ibF)?(ibT-ibF)/ibF:null,dObF=(obT&&obF)?(obT-obF)/obF:null;
     html+=`<tr class="${isSun?'wk-sep':''}">
@@ -1149,14 +1149,37 @@ function getFullWeeks(){
   }
   return Object.values(byWeek).filter(w=>w.days.length===7).sort((a,b)=>a.start-b.start);
 }
+function getIdlHours(){
+  // Returns {pp, ship, ib, total} — IDL hours to subtract per dept per week
+  const depts={pp:0,ship:0,ib:0,other:0};
+  S.idlDepts.forEach(d=>{
+    const h=(d.fn+d.mag+d.owws+d.sh)*S.hoursPerWorker;
+    const name=d.name.toUpperCase();
+    if(name==='PP'||name.includes('PP')) depts.pp+=h;
+    else if(name==='SHIP'||name.includes('SHIP')) depts.ship+=h;
+    else if(name==='IB'||name.includes('IB')) depts.ib+=h;
+    else depts.other+=h;
+  });
+  return depts;
+}
 function calcWeek(days){
   let ib=0,ob=0;
   for(const d of days){ const p=S.dailyPlans[d.dk]||{ib:d.ib,ob:d.ob}; ib+=p.ib||0; ob+=p.ob||0; }
   const h=S.hoursPerWorker,abs=S.absenceRate;
-  const ppH=S.tph.pp>0?ob/S.tph.pp:0, shipH=S.tph.ship>0?ob/S.tph.ship:0, ibH=S.tph.ib>0?ib/S.tph.ib:0;
+  // Gross hours needed per dept
+  const ppHGross=S.tph.pp>0?ob/S.tph.pp:0;
+  const shipHGross=S.tph.ship>0?ob/S.tph.ship:0;
+  const ibHGross=S.tph.ib>0?ib/S.tph.ib:0;
+  // Subtract IDL hours (contracted staff) — agency hours only
+  const idl=getIdlHours();
+  const ppH=Math.max(0,ppHGross-idl.pp);
+  const shipH=Math.max(0,shipHGross-idl.ship);
+  const ibH=Math.max(0,ibHGross-idl.ib);
   const wkH=ppH+shipH+ibH;
-  return {ib,ob,ppH,shipH,ibH,wkH,ppHC:ppH/h,shipHC:shipH/h,ibHC:ibH/h,
-    totalHC:h>0?Math.ceil(wkH/h/(1-abs)):0,days};
+  // HC needed (agency only, after IDL deduction, with absence correction)
+  const totalHC=h>0?Math.ceil(wkH/h/(1-abs)):0;
+  return {ib,ob,ppHGross,shipHGross,ibHGross,ppH,shipH,ibH,wkH,
+    ppHC:ppH/h,shipHC:shipH/h,ibHC:ibH/h,totalHC,days};
 }
 function renderSummary(){
   const el=document.getElementById('summary_content');
@@ -1173,13 +1196,13 @@ function renderSummary(){
       </div>
       <div class="ga mb-16">
         <div class="kpi"><div class="kpi-label">Weekly Throughput</div><div class="kpi-value blue">${num(s.ib+s.ob)}</div><div class="kpi-sub">IB + OB</div></div>
-        <div class="kpi"><div class="kpi-label">Total OB</div><div class="kpi-value">${num(s.ob)}</div><div class="kpi-sub">${num(s.ppH,0)}h P&amp;P · ${num(s.shipH,0)}h SHIP</div></div>
-        <div class="kpi"><div class="kpi-label">Total IB</div><div class="kpi-value">${num(s.ib)}</div><div class="kpi-sub">${num(s.ibH,0)}h IB</div></div>
-        <div class="kpi"><div class="kpi-label">P&amp;P HC</div><div class="kpi-value">${num(s.ppHC)}</div></div>
-        <div class="kpi"><div class="kpi-label">SHIP HC</div><div class="kpi-value">${num(s.shipHC)}</div></div>
-        <div class="kpi"><div class="kpi-label">IB HC</div><div class="kpi-value">${num(s.ibHC)}</div></div>
-        <div class="kpi"><div class="kpi-label">Total HC Needed</div><div class="kpi-value orange">${num(s.totalHC)}</div><div class="kpi-sub">z absencją ${(S.absenceRate*100).toFixed(0)}%</div></div>
-        <div class="kpi"><div class="kpi-label">Weekly Hours</div><div class="kpi-value">${num(s.wkH,0)}</div></div>
+        <div class="kpi"><div class="kpi-label">Total OB</div><div class="kpi-value">${num(s.ob)}</div><div class="kpi-sub">${num(s.ppHGross,0)}h P&amp;P · ${num(s.shipHGross,0)}h SHIP (brutto)</div></div>
+        <div class="kpi"><div class="kpi-label">Total IB</div><div class="kpi-value">${num(s.ib)}</div><div class="kpi-sub">${num(s.ibHGross,0)}h IB (brutto)</div></div>
+        <div class="kpi"><div class="kpi-label">P&amp;P HC agenc.</div><div class="kpi-value">${num(s.ppHC)}</div><div class="kpi-sub">po odjęciu IDL</div></div>
+        <div class="kpi"><div class="kpi-label">SHIP HC agenc.</div><div class="kpi-value">${num(s.shipHC)}</div><div class="kpi-sub">po odjęciu IDL</div></div>
+        <div class="kpi"><div class="kpi-label">IB HC agenc.</div><div class="kpi-value">${num(s.ibHC)}</div><div class="kpi-sub">po odjęciu IDL</div></div>
+        <div class="kpi"><div class="kpi-label">Total HC Needed</div><div class="kpi-value orange">${num(s.totalHC)}</div><div class="kpi-sub">agenc. · absencja ${(S.absenceRate*100).toFixed(0)}%</div></div>
+        <div class="kpi"><div class="kpi-label">Hours agencyjne</div><div class="kpi-value">${num(s.wkH,0)}</div><div class="kpi-sub">po IDL</div></div>
       </div>
       <div class="card">
         <div class="card-body-0 tscroll"><table><thead><tr>
@@ -1227,21 +1250,40 @@ function renderHC(){
     const needed=s.totalHC;
     const traineeEff=trainees.reduce((sum,t)=>sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
     const effectiveHC=Math.round(hc+traineeEff);
+    // zap > 0 = surplus (too many people), zap < 0 = deficit (too few)
     const zap=effectiveHC-needed;
     let rec=null;
     if(i+3<weeks.length){
       const futNeeded=calcWeek(weeks[i+3].days).totalHC;
+      // Project HC 3 weeks out: current HC + trainees graduating, minus attrition
       let futHC=hc;
-      for(let j=0;j<3;j++) futHC=usePercent&&avgRot!=null?Math.round(futHC*(1-avgRot)):Math.max(0,futHC-rotFixed);
-      const gap=futNeeded-futHC;
-      if(gap>10) rec=Math.ceil(gap/avgReal);
-      else if(gap<-20) rec=gap;
+      const futTrainees=[...trainees];
+      for(let j=0;j<3;j++){
+        // Age trainees
+        const grad=futTrainees.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
+        futTrainees.forEach(t=>t.weeksLeft--);
+        const remaining=futTrainees.filter(t=>t.weeksLeft>0);
+        futHC+=grad;
+        // Attrition
+        futHC=usePercent&&avgRot!=null?Math.round(futHC*(1-avgRot)):Math.max(0,futHC-rotFixed);
+        // Trainee effective contribution (those still in ramp)
+      }
+      // Trainee effective contribution in target week
+      const futTraineeEff=futTrainees.filter(t=>t.weeksLeft>0).reduce((sum,t)=>
+        sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
+      const futEffective=Math.round(futHC+futTraineeEff);
+      const gap=futNeeded-futEffective;
+      if(gap>10) rec=Math.ceil(gap/avgReal);      // need to hire
+      else if(gap<-20) rec=Math.round(gap);        // need to reduce
     }
     rows.push({wkN,hc:Math.round(hc),effectiveHC,needed,zap,rec,avgReal,wkStart:weeks[i].start});
+    // Advance state for next week
     trainees=trainees.map(t=>({...t,weeksLeft:t.weeksLeft-1})).filter(t=>t.weeksLeft>0);
     const graduated=trainees.filter(t=>t.weeksLeft===0).reduce((s,t)=>s+t.count,0);
     hc+=graduated; trainees=trainees.filter(t=>t.weeksLeft>0);
+    // Apply attrition
     if(usePercent&&avgRot!=null) hc=Math.round(hc*(1-avgRot)); else hc=Math.max(0,hc-rotFixed);
+    // If we recommended hiring this week, add trainees to pipeline immediately
     if(rec!=null&&rec>0) trainees.push({weeksLeft:3,count:rec});
   }
   let html=`<div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
@@ -1249,11 +1291,20 @@ function renderHC(){
     <th class="td-r">HC Needed</th><th class="td-r">Zapotrzebowanie</th><th class="td-r">Sugestia wejść</th><th>Status</th>
   </tr></thead><tbody>`;
   rows.forEach(r=>{
-    const cls=r.zap>20?'hc-deficit':r.zap<-20?'hc-surplus':'';
+    // zap>0 = nadwyżka (mamy więcej niż trzeba) = green
+    // zap<0 = niedobór (za mało ludzi) = red
+    const cls=r.zap<-20?'hc-deficit':r.zap>20?'hc-surplus':'';
     const zapStr=(r.zap>0?'+':'')+num(r.zap);
     const zapC=r.zap>=0?'cgreen':'cred';
-    const badge=r.zap>20?`<span class="badge b-red">−${Math.abs(r.zap)} niedobór</span>`:r.zap<-20?`<span class="badge b-green">+${Math.abs(r.zap)} nadwyżka</span>`:`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
-    const recHtml=r.rec==null?'<span class="c3">—</span>':r.rec>0?`<span class="fw6 cgreen">+${r.rec} os.</span><span class="text-xs c2" style="display:block">real. ${(r.avgReal*100).toFixed(0)}%</span>`:`<span class="fw6 cred">${r.rec} redukcja</span>`;
+    const badge=r.zap<-20
+      ?`<span class="badge b-red">${num(r.zap)} niedobór</span>`
+      :r.zap>20
+        ?`<span class="badge b-green">+${num(r.zap)} nadwyżka</span>`
+        :`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
+    const recHtml=r.rec==null?'<span class="c3">—</span>'
+      :r.rec>0
+        ?`<span class="fw6 cgreen">+${r.rec} os. wejście</span><span class="text-xs c2" style="display:block">korekta real. ${(r.avgReal*100).toFixed(0)}%</span>`
+        :`<span class="fw6 cred">${Math.abs(r.rec)} os. redukcja</span>`;
     html+=`<tr class="${cls}"><td class="fw7 cblue">WK${r.wkN}</td><td class="c2 text-sm">${r.wkStart.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'})}</td><td class="td-r mono">${num(r.hc)}</td><td class="td-r mono c2">${num(r.effectiveHC)}</td><td class="td-r mono fw6">${num(r.needed)}</td><td class="td-r mono fw6 ${zapC}">${zapStr}</td><td class="td-r">${recHtml}</td><td>${badge}</td></tr>`;
   });
   html+=`</tbody></table></div></div><div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">Efektywny HC uwzględnia stażystów (60%→75%→85%→100% po 3 tygodniach). Sugestia wejść koryguje o średnią realizację agencji (${(getAvgAgencyReal()*100).toFixed(0)}%).</div></div>`;
