@@ -310,7 +310,11 @@ input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-
 <div class="page" id="page-agencje">
   <div class="page-header flex justify-between items-center" style="flex-wrap:wrap;gap:12px">
     <div><div class="page-title">Agencje</div><div class="page-sub">Stan osobowy, rotacja i % realizacji wejść</div></div>
-    <div class="flex gap-8"><button class="btn btn-s" onclick="addWeekCol()">+ Tydzień</button><button class="btn btn-p" onclick="openModal('modal-agency')">+ Agencja</button></div>
+    <div class="flex gap-8">
+      <button class="btn btn-s" onclick="addWeekCol()">+ Tydzień</button>
+      <button class="btn btn-s" onclick="clearZeroHC()" title="Usuń z bazy wpisy z wartością 0 dla tygodni innych niż WK22">Wyczyść zera DB</button>
+      <button class="btn btn-p" onclick="openModal('modal-agency')">+ Agencja</button>
+    </div>
   </div>
   <div class="card mb-20">
     <div class="card-head"><div><div class="card-title">Stan osobowy i rotacja</div><div class="card-sub">Rotacja wyliczana automatycznie · zapis do bazy natychmiastowy</div></div></div>
@@ -502,7 +506,12 @@ async function bootstrap(){
     const hcRows = await sbGet('wms_agency_hc','?order=week_key.asc');
     S.agencyHC={};
     S.agencies.forEach(a=>{S.agencyHC[a.id]={};});
-    (hcRows||[]).forEach(r=>{ if(!S.agencyHC[r.agency_id])S.agencyHC[r.agency_id]={}; S.agencyHC[r.agency_id][r.week_key]=r.headcount; });
+    (hcRows||[]).forEach(r=>{
+      if(!S.agencyHC[r.agency_id])S.agencyHC[r.agency_id]={};
+      // Store null for headcount=0 from DB unless it's the first week (WK22 seed data)
+      // This way rotation ignores weeks that were auto-initialized to 0 but never filled in
+      S.agencyHC[r.agency_id][r.week_key] = (r.headcount===0 && r.week_key!=='WK22') ? null : r.headcount;
+    });
     // Agency realization
     const realRows = await sbGet('wms_agency_real','');
     S.agencyReal={};
@@ -1033,6 +1042,28 @@ async function removeAgency(id){
   S.agencies=S.agencies.filter(a=>a.id!==id);
   renderAgency();
 }
+async function clearZeroHC(){
+  if(!confirm('Usuwa z Supabase wszystkie wpisy headcount=0 dla tygodni innych niż WK22 (czyli tygodnie które zostały auto-zainicjowane z wartością 0 ale nigdy nie zostały ręcznie uzupełnione). Kontynuować?'))return;
+  setDbStatus('loading','Czyszczenie…');
+  try{
+    // Delete all wms_agency_hc rows where headcount=0 and week_key != WK22
+    await sbDel('wms_agency_hc','?headcount=eq.0&week_key=neq.WK22');
+    // Update local state: set these to null
+    S.agencies.forEach(a=>{
+      if(!S.agencyHC[a.id])return;
+      S.weekCols.forEach(wk=>{
+        if(wk!=='WK22' && S.agencyHC[a.id][wk]===0){
+          S.agencyHC[a.id][wk]=null;
+        }
+      });
+    });
+    setDbStatus('ok','✓ Wyczyszczono');
+    renderAgencyHC();
+  }catch(e){
+    setDbStatus('err','Błąd: '+e.message);
+  }
+}
+
 async function addWeekCol(){
   const wk=prompt('Numer tygodnia (np. WK23):'); if(!wk)return;
   const key=wk.startsWith('WK')?wk:'WK'+wk;
@@ -1041,8 +1072,11 @@ async function addWeekCol(){
   // Init HC=0 for all agencies for this week
   const upserts=S.agencies.map(a=>({agency_id:a.id,week_key:key,headcount:0}));
   if(upserts.length) await sbPost('wms_agency_hc',upserts);
-  // Initialize as undefined so rotation doesn't count empty weeks as 0
-  S.agencies.forEach(a=>{if(!S.agencyHC[a.id])S.agencyHC[a.id]={};});
+  // Don't pre-insert zeros to DB — let rotation ignore unset weeks
+  S.agencies.forEach(a=>{
+    if(!S.agencyHC[a.id])S.agencyHC[a.id]={};
+    S.agencyHC[a.id][key]=null; // null = not yet filled in
+  });
   await saveSettings();
   renderAgency();
 }
@@ -1065,11 +1099,11 @@ async function setHC(aid,wk,v){
 
 function renderAgencyTotalsOnly(){
   const wks=S.weekCols;
-  // Update total cells
   const totalCells=document.querySelectorAll('.agency-total-cell');
   wks.forEach((w,i)=>{
-    const tot=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]||0),0);
-    if(totalCells[i]) totalCells[i].textContent=tot;
+    const anySet=S.agencies.some(a=>S.agencyHC[a.id]?.[w]!=null);
+    const tot=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]??0),0);
+    if(totalCells[i]) totalCells[i].textContent=anySet?tot:'—';
   });
   // Update avg rotation
   const avgEl=document.getElementById('agency_avg_rot');
@@ -1120,14 +1154,19 @@ function renderAgencyHC(){
     const rot=getRotation(a.id);
     const rc=rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen';
     html+=`<tr><td class="fw6">${a.name}</td>
-      ${wks.map(w=>`<td class="td-r"><input class="ii" type="number" value="${S.agencyHC[a.id]?.[w]??''}" placeholder="0" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`).join('')}
+      ${wks.map(w=>{const v=S.agencyHC[a.id]?.[w];return`<td class="td-r"><input class="ii" type="number" value="${v!=null?v:''}" placeholder="—" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`}).join('')}
       <td id="rot_${a.id}" class="td-r fw6 ${rc}">${rot!=null?pct(rot):'—'}</td>
       <td><button class="btn btn-sm btn-d" onclick="removeAgency(${a.id})">✕</button></td>
     </tr>`;
   });
   const totals=wks.map(w=>S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]??0),0));
+  // Show dash instead of 0 if NO agency has set a value for this week
+  const totalsDisplay=totals.map((t,i)=>{
+    const anySet=S.agencies.some(a=>S.agencyHC[a.id]?.[wks[i]]!=null);
+    return anySet?t:'—';
+  });
   const avgRot=getAvgRotation();
-  html+=`<tr class="tfoot-row"><td><strong>Razem</strong></td>${totals.map(t=>`<td class="td-r cblue fw6 agency-total-cell">${t}</td>`).join('')}<td id="agency_avg_rot" class="td-r corange fw6">${avgRot!=null?pct(avgRot):'—'}</td><td></td></tr>`;
+  html+=`<tr class="tfoot-row"><td><strong>Razem</strong></td>${totalsDisplay.map(t=>`<td class="td-r cblue fw6 agency-total-cell">${t}</td>`).join('')}<td id="agency_avg_rot" class="td-r corange fw6">${avgRot!=null?pct(avgRot):'—'}</td><td></td></tr>`;
   wrap.innerHTML=html+'</tbody></table>';
 }
 function renderAgencyReal(){
