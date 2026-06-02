@@ -310,7 +310,11 @@ input:disabled,select:disabled{background:#f5f5f7;color:var(--text3);cursor:not-
 <div class="page" id="page-agencje">
   <div class="page-header flex justify-between items-center" style="flex-wrap:wrap;gap:12px">
     <div><div class="page-title">Agencje</div><div class="page-sub">Stan osobowy, rotacja i % realizacji wejść</div></div>
-    <div class="flex gap-8"><button class="btn btn-s" onclick="addWeekCol()">+ Tydzień</button><button class="btn btn-p" onclick="openModal('modal-agency')">+ Agencja</button></div>
+    <div class="flex gap-8">
+      <button class="btn btn-s" onclick="refreshAgencyData()">↺ Odśwież</button>
+      <button class="btn btn-s" onclick="addWeekCol()">+ Tydzień</button>
+      <button class="btn btn-p" onclick="openModal('modal-agency')">+ Agencja</button>
+    </div>
   </div>
   <div class="card mb-20">
     <div class="card-head"><div><div class="card-title">Stan osobowy i rotacja</div><div class="card-sub">Rotacja wyliczana automatycznie · zapis do bazy natychmiastowy</div></div></div>
@@ -1038,6 +1042,31 @@ async function removeAgency(id){
   S.agencies=S.agencies.filter(a=>a.id!==id);
   renderAgency();
 }
+async function refreshAgencyData(){
+  setDbStatus('loading','Odświeżanie…');
+  try{
+    // Reload HC from Supabase
+    const hcRows = await sbGet('wms_agency_hc','?order=week_key.asc');
+    S.agencies.forEach(a=>{ if(!S.agencyHC[a.id]) S.agencyHC[a.id]={}; });
+    (hcRows||[]).forEach(r=>{
+      if(!S.agencyHC[r.agency_id]) S.agencyHC[r.agency_id]={};
+      S.agencyHC[r.agency_id][r.week_key] = (r.headcount===0 && r.week_key!=='WK22') ? null : r.headcount;
+    });
+    // Also reload realization
+    const realRows = await sbGet('wms_agency_real','');
+    S.agencies.forEach(a=>{ S.agencyReal[a.id]={}; });
+    (realRows||[]).forEach(r=>{
+      if(!S.agencyReal[r.agency_id]) S.agencyReal[r.agency_id]={};
+      S.agencyReal[r.agency_id][r.entry_date]=r.realization_pct;
+    });
+    renderAgency();
+    document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
+    setDbStatus('ok','✓ Odświeżono');
+  }catch(e){
+    setDbStatus('err','Błąd: '+e.message);
+  }
+}
+
 async function clearZeroHC(){
   if(!confirm('Usuwa z Supabase wszystkie wpisy headcount=0 dla tygodni innych niż WK22 (czyli tygodnie które zostały auto-zainicjowane z wartością 0 ale nigdy nie zostały ręcznie uzupełnione). Kontynuować?'))return;
   setDbStatus('loading','Czyszczenie…');
