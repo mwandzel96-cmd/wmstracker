@@ -1405,97 +1405,119 @@ function renderHC(){
   const el=document.getElementById('hc_content');
   const weeks=getFullWeeks();
   if(!weeks.length){el.innerHTML='<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+
   const avgRot=getAvgRotation();
   if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
   const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed;
   const usePercent=S.rotMode==='percent';
-  const avgReal=getAvgAgencyReal();
-  let hc=getTotalHC(), trainees=[], rows=[];
+  const avgReal=getAvgAgencyReal(); // 0-1 fraction
+
+  // Helper: project HC forward k weeks (no new hires)
+  function projFwd(startHC, k){
+    let ph=startHC;
+    for(let j=0;j<k;j++){
+      ph=usePercent&&avgRot!=null ? Math.round(ph*(1-avgRot)) : Math.max(0,ph-rotFixed);
+    }
+    return ph;
+  }
+
+  // Format week period: "07.06 – 13.06"
+  function wkPeriod(start){
+    const end=new Date(start); end.setUTCDate(start.getUTCDate()+6);
+    const fmt=d=>d.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'});
+    return `${fmt(start)} – ${fmt(end)}`;
+  }
+
+  // Build rows
+  let hc=getTotalHC(), rows=[];
   for(let i=0;i<weeks.length;i++){
     const wkN=isoWeek(weeks[i].start);
-    const s=calcWeek(weeks[i].days);
-    const needed=s.totalHC;
-    const traineeEff=trainees.reduce((sum,t)=>sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
-    const effectiveHC=Math.round(hc+traineeEff);
-    // zap > 0 = surplus (too many people), zap < 0 = deficit (too few)
-    const zap=effectiveHC-needed;
-    // Project HC forward k weeks from current state
-    function projFwd(startHC, startTrainees, k){
-      let ph=startHC;
-      const pt=startTrainees.map(t=>({...t}));
-      for(let j=0;j<k;j++){
-        const grad=pt.filter(t=>t.weeksLeft===1).reduce((s,t)=>s+t.count,0);
-        pt.forEach(t=>t.weeksLeft--);
-        ph+=grad;
-        ph=usePercent&&avgRot!=null?Math.round(ph*(1-avgRot)):Math.max(0,ph-rotFixed);
-      }
-      const tEff=pt.filter(t=>t.weeksLeft>0).reduce((sum,t)=>
-        sum+t.count*(t.weeksLeft===3?.6:t.weeksLeft===2?.75:.85),0);
-      return {hc:ph,eff:Math.round(ph+tEff)};
-    }
+    const needed=calcWeek(weeks[i].days).totalHC;
+    const projHC=Math.round(hc);
+    // Zapotrzebowanie = HC Needed - Proj HC (+ = brakuje, - = nadwyżka)
+    const zap=needed-projHC;
 
-    let rec=null;
-    // Scan next 1-6 weeks for worst upcoming deficit (without any new hires)
-    let worstDeficit=0, worstAt=0;
-    for(let k=1;k<=6&&i+k<weeks.length;k++){
-      const proj=projFwd(hc,trainees,k);
-      const futNeeded=calcWeek(weeks[i+k].days).totalHC;
-      const deficit=futNeeded-proj.eff; // positive = we're short
-      if(deficit>worstDeficit){worstDeficit=deficit;worstAt=k;}
-    }
+    rows.push({wkN, wkStart:weeks[i].start, projHC, needed, zap});
 
-    if(worstDeficit>10){
-      // Upcoming deficit — suggest hiring now
-      // Trainees entering now: in week k they'll be at ramp efficiency
-      const rampEff=worstAt===1?.6:worstAt===2?.75:worstAt===3?.85:1.0;
-      rec=Math.ceil(worstDeficit/rampEff/avgReal);
-    } else if(zap>20){
-      // Currently surplus, no upcoming deficit — check if surplus persists 6 weeks
-      let allSurplus=true;
-      for(let k=1;k<=6&&i+k<weeks.length;k++){
-        const proj=projFwd(hc,trainees,k);
-        const futNeeded=calcWeek(weeks[i+k].days).totalHC;
-        if(proj.eff-futNeeded<20){allSurplus=false;break;}
-      }
-      if(allSurplus) rec=-(zap-10); // reduce by surplus minus small buffer
-    }
-
-    rows.push({wkN,hc:Math.round(hc),effectiveHC,needed,zap,rec,avgReal,wkStart:weeks[i].start});
-    // Advance state for next week
-    trainees=trainees.map(t=>({...t,weeksLeft:t.weeksLeft-1})).filter(t=>t.weeksLeft>0);
-    const graduated=trainees.filter(t=>t.weeksLeft===0).reduce((s,t)=>s+t.count,0);
-    hc+=graduated; trainees=trainees.filter(t=>t.weeksLeft>0);
-    // Apply attrition
-    if(usePercent&&avgRot!=null) hc=Math.round(hc*(1-avgRot)); else hc=Math.max(0,hc-rotFixed);
-    // New hires enter pipeline immediately after recommendation
-    if(rec!=null&&rec>0) trainees.push({weeksLeft:3,count:rec});
+    // Advance HC with attrition for next week
+    hc=usePercent&&avgRot!=null ? Math.round(hc*(1-avgRot)) : Math.max(0,hc-rotFixed);
   }
-  let html=`<div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
-    <th>WK</th><th>Data</th><th class="td-r">Proj. HC</th><th class="td-r">Efektywny HC</th>
-    <th class="td-r">HC Needed</th><th class="td-r">Zapotrzebowanie</th><th class="td-r">Sugestia wejść</th><th>Status</th>
+
+  // Build suggestions table: for each week with zap > 0, suggest hire 3 weeks earlier
+  const suggestions=[];
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    if(r.zap<=0) continue; // no deficit, skip
+    // Place hire 3 weeks before the deficit week (or as early as possible)
+    const hireAt=Math.max(0,i-3);
+    // Gross order corrected for agency realization rate
+    const grossOrder=Math.ceil(r.zap/avgReal);
+    // Check if already have a suggestion for this hireAt week — merge (take max)
+    const existing=suggestions.find(s=>s.hireAt===hireAt);
+    if(existing){
+      if(grossOrder>existing.grossOrder){
+        existing.grossOrder=grossOrder; existing.netNeed=r.zap;
+        existing.forWk=r.wkN; existing.forDate=r.wkStart;
+      }
+    } else {
+      suggestions.push({hireAt, grossOrder, netNeed:r.zap,
+        forWk:r.wkN, forDate:r.wkStart,
+        hireWk:rows[hireAt].wkN, hireWkStart:rows[hireAt].wkStart});
+    }
+  }
+
+  // ── TABLE 1: Projection ──────────────────────────
+  let html=`<div class="card mb-20"><div class="card-body-0 tscroll"><table><thead><tr>
+    <th>WK</th>
+    <th>Okres</th>
+    <th class="td-r" title="Headcount po uwzględnieniu rotacji — prognoza stanu na początku tygodnia">Proj. HC ⓘ</th>
+    <th class="td-r">HC Needed</th>
+    <th class="td-r">Zapotrzebowanie</th>
   </tr></thead><tbody>`;
+
   rows.forEach(r=>{
-    // zap = effectiveHC - needed
-    // zap > 0 → nadwyżka (mamy za dużo)
-    // zap < 0 → niedobór (za mało)
-    const cls=r.zap>20?'hc-surplus':r.zap<-20?'hc-deficit':'';
-    const zapStr=(r.zap>0?'+':'')+num(r.zap);
-    const zapC=r.zap>0?'corange':r.zap<0?'cred':'c2';
-    const badge=r.zap>20
-      ?`<span class="badge b-orange">+${num(r.zap)} nadwyżka</span>`
-      :r.zap<-20
-        ?`<span class="badge b-red">${num(r.zap)} niedobór</span>`
-        :`<span class="badge b-gray">±${Math.abs(r.zap)}</span>`;
-    // rec: only show if actionable
-    // rec > 0 → wejście (niedobór za 3 tygodnie)
-    // rec < 0 → redukcja (nadwyżka za 3 tygodnie I brak niedoboru w najbliższych 4 tygodniach)
-    const recHtml=r.rec==null?'<span class="c3">—</span>'
-      :r.rec>0
-        ?`<span class="fw6 cblue">+${r.rec} os. wejście</span><span class="text-xs c2" style="display:block">korekta real. ${(r.avgReal*100).toFixed(0)}%</span>`
-        :`<span class="fw6 corange">${Math.abs(r.rec)} os. redukcja</span>`;
-    html+=`<tr class="${cls}"><td class="fw7 cblue">WK${r.wkN}</td><td class="c2 text-sm">${r.wkStart.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'})}</td><td class="td-r mono">${num(r.hc)}</td><td class="td-r mono c2">${num(r.effectiveHC)}</td><td class="td-r mono fw6">${num(r.needed)}</td><td class="td-r mono fw6 ${zapC}">${zapStr}</td><td class="td-r">${recHtml}</td><td>${badge}</td></tr>`;
+    const zapStr=(r.zap>0?'+':r.zap<0?'':'±')+num(r.zap);
+    const zapC=r.zap>0?'cred':r.zap<0?'cgreen':'c2';
+    const cls=r.zap>20?'hc-deficit':r.zap<-20?'hc-surplus':'';
+    html+=`<tr class="${cls}">
+      <td class="fw7 cblue">WK${r.wkN}</td>
+      <td class="c2 text-sm" style="white-space:nowrap">WK${r.wkN} (${wkPeriod(r.wkStart)})</td>
+      <td class="td-r mono">${num(r.projHC)}</td>
+      <td class="td-r mono fw6">${num(r.needed)}</td>
+      <td class="td-r mono fw6 ${zapC}">${zapStr}</td>
+    </tr>`;
   });
-  html+=`</tbody></table></div></div><div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">Efektywny HC uwzględnia stażystów (60%→75%→85%→100% po 3 tygodniach). Sugestia wejść koryguje o średnią realizację agencji (${(getAvgAgencyReal()*100).toFixed(0)}%).</div></div>`;
+  html+=`</tbody></table></div></div>`;
+
+  // ── TABLE 2: Suggestions ────────────────────────
+  html+=`<div class="page-title" style="font-size:16px;margin-bottom:12px">Sugestie wejść i zwolnień</div>`;
+  if(!suggestions.length){
+    html+=`<div class="notice n-green"><span>✅</span><div>Brak deficytów — stan osobowy pokrywa zapotrzebowanie we wszystkich tygodniach.</div></div>`;
+  } else {
+    html+=`<div class="notice n-blue mb-12"><span>ℹ️</span><div class="text-sm">
+      Wejścia planowane <strong>3 tygodnie przed</strong> tygodniem zapotrzebowania.
+      Liczba brutto korygowana o średnią realizację agencji: <strong>${(avgReal*100).toFixed(0)}%</strong>
+      ${avgReal<1?`(zamów ${(1/avgReal).toFixed(2)}× więcej niż potrzebujesz)`:''}
+    </div></div>
+    <div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
+      <th>Tydzień wejścia</th>
+      <th>Zapotrzebowanie w</th>
+      <th class="td-r">Potrzeba netto</th>
+      <th class="td-r">Realizacja agencji</th>
+      <th class="td-r fw6 cblue">Zamów brutto</th>
+    </tr></thead><tbody>`;
+    suggestions.forEach(s=>{
+      html+=`<tr>
+        <td class="fw7 cblue">WK${s.hireWk} <span class="c2 text-sm">(${wkPeriod(s.hireWkStart)})</span></td>
+        <td class="c2">WK${s.forWk} <span class="text-sm">(${wkPeriod(s.forDate)})</span></td>
+        <td class="td-r mono">${num(s.netNeed)}</td>
+        <td class="td-r mono c2">${(avgReal*100).toFixed(0)}%</td>
+        <td class="td-r mono fw6 cblue" style="font-size:15px">+${num(s.grossOrder)}</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+  }
+
   el.innerHTML=html;
 }
 
