@@ -580,6 +580,7 @@ async function bootstrap(){
     setDbStatus('ok','✓ Połączono');
     document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
     renderMatrix('ib');
+    renderMatrix('ob');
     renderRealMatrix();
     renderAgency();
     renderIDL();
@@ -642,21 +643,9 @@ function loadPlansFromXLSX(){
 function onFcstDateChange(){
   const val=document.getElementById('fcst_date').value;
   const zone=document.getElementById('dropzone');
-  const notice=document.getElementById('fcst_date_notice');
-  const okBox=document.getElementById('fcst_date_ok');
-  const sub=document.getElementById('upload_card_sub');
-  if(!val){
-    zone.classList.add('locked');
-    notice.style.display='flex'; okBox.style.display='none';
-    sub.textContent='Wybierz najpierw datę obowiązywania';
-    return;
-  }
+  if(!zone) return;
+  if(!val){ zone.classList.add('locked'); return; }
   zone.classList.remove('locked');
-  notice.style.display='none'; okBox.style.display='flex';
-  const d=new Date(val+'T00:00:00Z');
-  const wk=isoWeek(d);
-  document.getElementById('fcst_date_ok_text').textContent=`Prognoza od WK${wk} · ${d.toLocaleDateString('pl-PL',{timeZone:'UTC'})}`;
-  sub.textContent='Przeciągnij lub kliknij aby wgrać plik';
 }
 
 // ═══════════════════════════════════════════════════
@@ -767,7 +756,7 @@ async function saveForecast(filename,startDk,data,statusEl,found){
 
     setDbStatus('ok','✓ Zapisano');
     statusEl.innerHTML=`<span style="color:var(--green)">✅ ${data.length} dni · ${found.join(' · ')}</span>`;
-    renderFcstList(); renderComparison(); renderPlans();
+    renderMatrix('ib'); renderMatrix('ob'); renderRealMatrix(); renderPlans();
   }catch(e){
     setDbStatus('err','Błąd zapisu');
     statusEl.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;
@@ -786,19 +775,19 @@ function renderFcstList(){
       <button class="btn btn-sm btn-d" onclick="event.stopPropagation();deleteFcst(${f.id})">✕</button>
     </div>`).join('');
 }
-function setActiveFcst(id){S.activeFcstId=id;renderFcstList();renderComparison();renderPlans();}
+function setActiveFcst(id){S.activeFcstId=id;renderPlans();}
 async function deleteFcst(id){
   if(!confirm('Usunąć prognozę?'))return;
   await sbDel('wms_forecasts',`?id=eq.${id}`);
   S.forecasts=S.forecasts.filter(f=>f.id!==id);
   if(S.activeFcstId===id) S.activeFcstId=S.forecasts[0]?.id||null;
-  renderFcstList(); renderComparison();
+  renderMatrix('ib'); renderMatrix('ob');
 }
 async function clearForecasts(){
   if(!confirm('Usunąć wszystkie prognozy?'))return;
   await sbDel('wms_forecasts','?id=gt.0');
   S.forecasts=[]; S.activeFcstId=null;
-  renderFcstList(); renderComparison();
+  renderMatrix('ib'); renderMatrix('ob');
 }
 
 // ═══════════════════════════════════════════════════
@@ -1626,7 +1615,7 @@ function renderHC(){
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
-document.getElementById('fcst_date_notice').style.display='flex';
+// init
 bootstrap();
 </script>
 </body>
