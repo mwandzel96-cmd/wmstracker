@@ -1286,12 +1286,16 @@ function getFullWeeks(){
   const byWeek={};
   for(const d of fcst.data){
     const dow=d.date.getUTCDay();
+    // week starts on Sunday
     const ws=new Date(d.date); ws.setUTCDate(d.date.getUTCDate()-dow);
     const wsk=dateKey(ws);
-    if(!byWeek[wsk])byWeek[wsk]={start:ws,days:[]};
+    if(!byWeek[wsk])byWeek[wsk]={start:ws,days:[],partial:false};
     byWeek[wsk].days.push(d);
   }
-  return Object.values(byWeek).filter(w=>w.days.length===7).sort((a,b)=>a.start-b.start);
+  return Object.values(byWeek)
+    .map(w=>({...w, partial:w.days.length<7}))
+    .filter(w=>w.days.length>=1)
+    .sort((a,b)=>a.start-b.start);
 }
 function getIdlHours(){
   // Returns {pp, ship, ib, total} — IDL hours to subtract per dept per week
@@ -1515,7 +1519,7 @@ function renderHC(){
     const bufPct=needed[i]>0?projHC/needed[i]:1;
     const optHC=optSim[i];
     const optBuf=needed[i]>0?optHC/needed[i]:1;
-    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,optHC,optBuf,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i]});
+    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,optHC,optBuf,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i],partial:weeks[i].partial});
   }
 
   // TABLE 1 — Projekcja HC
@@ -1536,7 +1540,7 @@ function renderHC(){
     const bufColor=r.bufPct<1?'cred':r.bufPct>1.10?'corange':'cgreen';
     const optC=r.optBuf<1?'cred':r.optBuf>1.10?'corange':'cgreen';
     html+=`<tr class="${cls}">
-      <td class="fw7 cblue">WK${r.wkN}</td>
+      <td class="fw7 cblue">WK${r.wkN}${r.partial?'<span class="text-xs c3" style="font-weight:400"> ~'+r.needed+'d</span>':''}</td>
       <td class="c2 text-sm" style="white-space:nowrap">WK${r.wkN} (${wkPeriod(r.wkStart)})</td>
       <td class="td-r mono c2">${num(r.projHC)}</td>
       <td class="td-r mono fw6 ${optC}">${num(r.optHC)}</td>
@@ -1574,7 +1578,7 @@ function renderHC(){
       const buf=r.needed>0?(r.projHC/r.needed*100).toFixed(1)+'%':'—';
       const bufC=r.projHC>=r.needed?'cgreen':'cred';
       html+=`<tr>
-        <td class="fw7 cblue">WK${r.wkN}</td>
+        <td class="fw7 cblue">WK${r.wkN}${r.partial?'<span class="text-xs c3" style="font-weight:400"> ~'+r.needed+'d</span>':''}</td>
         <td class="c2 text-sm" style="white-space:nowrap">${wkPeriod(r.wkStart)}</td>
         <td>${isHire?'<span class="fw6 cblue">▲ Wejście</span>':'<span class="fw6 corange">▼ Zwolnienie</span>'}</td>
         <td class="td-r mono ${isHire?'cblue':'corange'}">${isHire?'+':'−'}${num(net)}</td>
