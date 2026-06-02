@@ -1042,29 +1042,11 @@ async function removeAgency(id){
   S.agencies=S.agencies.filter(a=>a.id!==id);
   renderAgency();
 }
-async function refreshAgencyData(){
-  setDbStatus('loading','Odświeżanie…');
-  try{
-    // Reload HC from Supabase
-    const hcRows = await sbGet('wms_agency_hc','?order=week_key.asc');
-    S.agencies.forEach(a=>{ if(!S.agencyHC[a.id]) S.agencyHC[a.id]={}; });
-    (hcRows||[]).forEach(r=>{
-      if(!S.agencyHC[r.agency_id]) S.agencyHC[r.agency_id]={};
-      S.agencyHC[r.agency_id][r.week_key] = (r.headcount===0 && r.week_key!=='WK22') ? null : r.headcount;
-    });
-    // Also reload realization
-    const realRows = await sbGet('wms_agency_real','');
-    S.agencies.forEach(a=>{ S.agencyReal[a.id]={}; });
-    (realRows||[]).forEach(r=>{
-      if(!S.agencyReal[r.agency_id]) S.agencyReal[r.agency_id]={};
-      S.agencyReal[r.agency_id][r.entry_date]=r.realization_pct;
-    });
-    renderAgency();
-    document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
-    setDbStatus('ok','✓ Odświeżono');
-  }catch(e){
-    setDbStatus('err','Błąd: '+e.message);
-  }
+function refreshAgencyData(){
+  // Just re-render from current in-memory state — don't reload from DB
+  // (all changes are already saved to DB live via setHC)
+  renderAgency();
+  document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
 }
 
 async function clearZeroHC(){
