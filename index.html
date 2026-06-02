@@ -1410,109 +1410,178 @@ function renderHC(){
   if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
   const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed;
   const usePercent=S.rotMode==='percent';
-  const avgReal=getAvgAgencyReal(); // 0-1 fraction
+  const avgReal=Math.max(0.5,getAvgAgencyReal());
+  const TARGET=1.04; // cel: 104% HC Needed
+  const LEAD=3;      // tygodnie wyprzedzenia wejść
 
-  // Helper: project HC forward k weeks (no new hires)
-  function projFwd(startHC, k){
-    let ph=startHC;
-    for(let j=0;j<k;j++){
-      ph=usePercent&&avgRot!=null ? Math.round(ph*(1-avgRot)) : Math.max(0,ph-rotFixed);
-    }
-    return ph;
+  function applyRot(hc){
+    return usePercent&&avgRot!=null?Math.round(hc*(1-avgRot)):Math.max(0,hc-rotFixed);
   }
-
-  // Format week period: "07.06 – 13.06"
   function wkPeriod(start){
     const end=new Date(start); end.setUTCDate(start.getUTCDate()+6);
     const fmt=d=>d.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit',timeZone:'UTC'});
-    return `${fmt(start)} – ${fmt(end)}`;
+    return `${fmt(start)}\u2013${fmt(end)}`;
   }
 
-  // Build rows
-  let hc=getTotalHC(), rows=[];
+  const needed=weeks.map(w=>calcWeek(w.days).totalHC);
+  const hires=new Array(weeks.length).fill(0);   // brutto zamówionych (u agencji)
+  const releases=new Array(weeks.length).fill(0);
+  // Ramp-up: nowi pracownicy przez pierwsze 3 tygodnie są tylko częściowo efektywni
+  // tydzień 1=60%, tydzień 2=75%, tydzień 3=85%, tydzień 4+=100%
+  const RAMP=[0.60,0.75,0.85]; // indeks = numer tygodnia od wejścia (0-based), brak = 1.0
+
+  // Efektywny wkład nowej grupy hired w tygodniu hireWk, mierzony w tygodniu targetWk
+  function rampEff(lead){ return lead<=0?1.0:lead<=RAMP.length?RAMP[lead-1]:1.0; }
+
+  // Simulate HC trajectory — hc to "efektywny HC" (uwzględnia ramp-up)
+  // pipeline: [{count, weeksIn}] = pracownicy w trakcie wdrożenia
+  function simulate(h,r){
+    const states=[];      // efektywny HC per tydzień
+    const statesFull=[];  // pełny (głowowy) HC per tydzień
+    let hc=getTotalHC();  // głowowy HC na starcie
+    let pipe=[];          // [{count, weeksIn}] — nowi w trakcie ramp-up
+
+    for(let i=0;i<weeks.length;i++){
+      // 1. Nowi wchodzą w tym tygodniu (brutto * realizacja agencji)
+      const newReal=Math.round((h[i]||0)*avgReal);
+      if(newReal>0) pipe.push({count:newReal, weeksIn:1});
+      // 2. Zwolnienia (efekt natychmiastowy)
+      hc-=(r[i]||0);
+      hc=Math.max(0,hc);
+      // 3. Efektywny HC = pełny HC + wkład ramp-up grupy
+      //    Osoby w pipe NIE liczymy jeszcze w "hc" (wejdą po ramp-up)
+      //    Efektywny = hc (w pełni wdrożeni) + sum(group.count * rampEff(group.weeksIn))
+      const pipeEff=pipe.reduce((s,g)=>s+Math.round(g.count*rampEff(g.weeksIn)),0);
+      const effHC=hc+pipeEff;
+      states.push(effHC);
+      statesFull.push(hc+pipe.reduce((s,g)=>s+g.count,0));
+      // 4. Zakończenie ramp-up → przejście do pełnego HC
+      pipe=pipe.map(g=>({...g,weeksIn:g.weeksIn+1}));
+      const graduated=pipe.filter(g=>g.weeksIn>RAMP.length).reduce((s,g)=>s+g.count,0);
+      hc+=graduated;
+      pipe=pipe.filter(g=>g.weeksIn<=RAMP.length);
+      // 5. Rotacja (od pełnego HC)
+      hc=applyRot(hc);
+    }
+    return {eff:states, full:statesFull};
+  }
+
+  // PASS 1 — plan hires z uwzględnieniem ramp-up
+  // Dla każdego tygodnia i: patrz LEAD tygodni naprzód.
+  // Jeśli efektywny HC < 100% needed → zatrudnij teraz tyle, żeby osiągnąć TARGET.
   for(let i=0;i<weeks.length;i++){
-    const wkN=isoWeek(weeks[i].start);
-    const needed=calcWeek(weeks[i].days).totalHC;
-    const projHC=Math.round(hc);
-    // Zapotrzebowanie = HC Needed - Proj HC (+ = brakuje, - = nadwyżka)
-    const zap=needed-projHC;
-
-    rows.push({wkN, wkStart:weeks[i].start, projHC, needed, zap});
-
-    // Advance HC with attrition for next week
-    hc=usePercent&&avgRot!=null ? Math.round(hc*(1-avgRot)) : Math.max(0,hc-rotFixed);
-  }
-
-  // Build suggestions table: for each week with zap > 0, suggest hire 3 weeks earlier
-  const suggestions=[];
-  for(let i=0;i<rows.length;i++){
-    const r=rows[i];
-    if(r.zap<=0) continue; // no deficit, skip
-    // Place hire 3 weeks before the deficit week (or as early as possible)
-    const hireAt=Math.max(0,i-3);
-    // Gross order corrected for agency realization rate
-    const grossOrder=Math.ceil(r.zap/avgReal);
-    // Check if already have a suggestion for this hireAt week — merge (take max)
-    const existing=suggestions.find(s=>s.hireAt===hireAt);
-    if(existing){
-      if(grossOrder>existing.grossOrder){
-        existing.grossOrder=grossOrder; existing.netNeed=r.zap;
-        existing.forWk=r.wkN; existing.forDate=r.wkStart;
-      }
-    } else {
-      suggestions.push({hireAt, grossOrder, netNeed:r.zap,
-        forWk:r.wkN, forDate:r.wkStart,
-        hireWk:rows[hireAt].wkN, hireWkStart:rows[hireAt].wkStart});
+    const sim=simulate(hires,releases);
+    for(let lead=1;lead<=LEAD;lead++){
+      const t=i+lead;
+      if(t>=weeks.length) break;
+      if(sim.eff[t]>=needed[t]) continue;
+      const gap=Math.ceil(needed[t]*TARGET)-sim.eff[t];
+      if(gap<=0) continue;
+      // Ile efektywnych osób dostarczy jedna osoba zamówiona teraz po `lead` tygodniach?
+      // = rampEff(lead) * avgReal * przeżywalność rotacji
+      let survival=1.0;
+      for(let j=0;j<lead;j++) survival=usePercent&&avgRot!=null?survival*(1-avgRot):Math.max(0,survival-rotFixed/Math.max(1,getTotalHC()));
+      const effPerPerson=rampEff(lead)*avgReal*Math.max(0.3,survival);
+      const gross=Math.ceil(gap/effPerPerson);
+      hires[i]=Math.max(hires[i],gross);
+      break; // obsłuż najbliższy deficyt
     }
   }
 
-  // ── TABLE 1: Projection ──────────────────────────
-  let html=`<div class="card mb-20"><div class="card-body-0 tscroll"><table><thead><tr>
-    <th>WK</th>
-    <th>Okres</th>
-    <th class="td-r" title="Headcount po uwzględnieniu rotacji — prognoza stanu na początku tygodnia">Proj. HC ⓘ</th>
-    <th class="td-r">HC Needed</th>
-    <th class="td-r">Zapotrzebowanie</th>
-  </tr></thead><tbody>`;
+  // PASS 2 — plan releases (persistent surplus > 8% for 4+ weeks)
+  let sim2=simulate(hires,releases).eff;
+  let i=0;
+  while(i<weeks.length){
+    if(needed[i]>0 && sim2[i]>needed[i]*1.08){
+      // Count consecutive surplus weeks
+      let cnt=0;
+      for(let k=i;k<Math.min(i+4,weeks.length);k++){
+        if(sim2[k]>needed[k]*1.08) cnt++;
+      }
+      if(cnt>=4){
+        const excess=Math.floor(sim2[i]-Math.ceil(needed[i]*TARGET));
+        if(excess>5){
+          releases[i]=excess;
+          // Rebuild sim after this release
+          const sim3=simulate(hires,releases).eff;
+          for(let j=0;j<weeks.length;j++) sim2[j]=sim3[j];
+        }
+      }
+    }
+    i++;
+  }
 
+  // Build final rows
+  const finalSim=simulate(hires,releases);
+  const rows=[];
+  for(let i=0;i<weeks.length;i++){
+    const projHC=finalSim.eff[i];
+    const zap=needed[i]-projHC;
+    const bufPct=needed[i]>0?projHC/needed[i]:1;
+    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i]});
+  }
+
+  // TABLE 1 — Projekcja HC
+  let html=`<div class="card mb-20"><div class="card-body-0 tscroll"><table>
+    <thead><tr>
+      <th>WK</th><th>Okres</th>
+      <th class="td-r" title="Prognoza stanu osobowego po uwzględnieniu rotacji i planowanych wejść/zwolnień">Proj. HC ⓘ</th>
+      <th class="td-r">HC Needed</th>
+      <th class="td-r">Zapotrzebowanie</th>
+      <th class="td-r">Bufor</th>
+    </tr></thead><tbody>`;
   rows.forEach(r=>{
-    const zapStr=(r.zap>0?'+':r.zap<0?'':'±')+num(r.zap);
-    const zapC=r.zap>0?'cred':r.zap<0?'cgreen':'c2';
-    const cls=r.zap>20?'hc-deficit':r.zap<-20?'hc-surplus':'';
+    const zap=r.zap;
+    const zapStr=(zap>0?'+':'')+num(zap);
+    const zapC=zap>5?'cred':zap<-20?'cgreen':'c2';
+    const cls=zap>5?'hc-deficit':zap<-30?'hc-surplus':'';
+    const bufColor=r.bufPct<1?'cred':r.bufPct>1.10?'corange':'cgreen';
     html+=`<tr class="${cls}">
       <td class="fw7 cblue">WK${r.wkN}</td>
       <td class="c2 text-sm" style="white-space:nowrap">WK${r.wkN} (${wkPeriod(r.wkStart)})</td>
-      <td class="td-r mono">${num(r.projHC)}</td>
-      <td class="td-r mono fw6">${num(r.needed)}</td>
+      <td class="td-r mono fw6">${num(r.projHC)}</td>
+      <td class="td-r mono">${num(r.needed)}</td>
       <td class="td-r mono fw6 ${zapC}">${zapStr}</td>
+      <td class="td-r mono fw6 ${bufColor}">${r.needed>0?(r.bufPct*100).toFixed(1)+'%':'—'}</td>
     </tr>`;
   });
   html+=`</tbody></table></div></div>`;
 
-  // ── TABLE 2: Suggestions ────────────────────────
-  html+=`<div class="page-title" style="font-size:16px;margin-bottom:12px">Sugestie wejść i zwolnień</div>`;
-  if(!suggestions.length){
-    html+=`<div class="notice n-green"><span>✅</span><div>Brak deficytów — stan osobowy pokrywa zapotrzebowanie we wszystkich tygodniach.</div></div>`;
+  // TABLE 2 — Sugestie
+  html+=`<div style="font-size:16px;font-weight:700;margin-bottom:12px">Sugestie wejść i zwolnień</div>`;
+  const actions=rows.filter(r=>r.hire>0||r.release>0);
+  if(!actions.length){
+    html+=`<div class="notice n-green"><span>✅</span><div>Stan osobowy optymalny — brak potrzeby zmian w horyzoncie prognozy.</div></div>`;
   } else {
     html+=`<div class="notice n-blue mb-12"><span>ℹ️</span><div class="text-sm">
-      Wejścia planowane <strong>3 tygodnie przed</strong> tygodniem zapotrzebowania.
-      Liczba brutto korygowana o średnią realizację agencji: <strong>${(avgReal*100).toFixed(0)}%</strong>
-      ${avgReal<1?`(zamów ${(1/avgReal).toFixed(2)}× więcej niż potrzebujesz)`:''}
+      Cel: <strong>100–108% HC Needed</strong> (optimum 104%). Wejścia z <strong>${LEAD}-tygodniowym</strong> wyprzedzeniem.
+      Realizacja agencji: <strong>${(avgReal*100).toFixed(0)}%</strong> &nbsp;·&nbsp;
+      Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'}.
     </div></div>
-    <div class="card"><div class="card-body-0 tscroll"><table><thead><tr>
-      <th>Tydzień wejścia</th>
-      <th>Zapotrzebowanie w</th>
-      <th class="td-r">Potrzeba netto</th>
-      <th class="td-r">Realizacja agencji</th>
-      <th class="td-r fw6 cblue">Zamów brutto</th>
-    </tr></thead><tbody>`;
-    suggestions.forEach(s=>{
+    <div class="card"><div class="card-body-0 tscroll"><table>
+      <thead><tr>
+        <th>Tydzień akcji</th><th>Okres</th>
+        <th class="td-r">Akcja</th>
+        <th class="td-r">Netto</th>
+        <th class="td-r">Brutto (zamów)</th>
+        <th class="td-r">HC po akcji</th>
+        <th class="td-r">HC Needed</th>
+        <th class="td-r">Bufor</th>
+      </tr></thead><tbody>`;
+    actions.forEach(r=>{
+      const isHire=r.hire>0;
+      const net=isHire?Math.round(r.hire*avgReal):r.release;
+      const buf=r.needed>0?(r.projHC/r.needed*100).toFixed(1)+'%':'—';
+      const bufC=r.projHC>=r.needed?'cgreen':'cred';
       html+=`<tr>
-        <td class="fw7 cblue">WK${s.hireWk} <span class="c2 text-sm">(${wkPeriod(s.hireWkStart)})</span></td>
-        <td class="c2">WK${s.forWk} <span class="text-sm">(${wkPeriod(s.forDate)})</span></td>
-        <td class="td-r mono">${num(s.netNeed)}</td>
-        <td class="td-r mono c2">${(avgReal*100).toFixed(0)}%</td>
-        <td class="td-r mono fw6 cblue" style="font-size:15px">+${num(s.grossOrder)}</td>
+        <td class="fw7 cblue">WK${r.wkN}</td>
+        <td class="c2 text-sm" style="white-space:nowrap">${wkPeriod(r.wkStart)}</td>
+        <td>${isHire?'<span class="fw6 cblue">▲ Wejście</span>':'<span class="fw6 corange">▼ Zwolnienie</span>'}</td>
+        <td class="td-r mono ${isHire?'cblue':'corange'}">${isHire?'+':'−'}${num(net)}</td>
+        <td class="td-r mono fw6 ${isHire?'cblue':'corange'}">${isHire?'+':'−'}${num(isHire?r.hire:r.release)}${isHire?'<span class="c3 text-xs" style="display:block">zamów u agencji</span>':''}</td>
+        <td class="td-r mono fw6">${num(r.projHC)}</td>
+        <td class="td-r mono c2">${num(r.needed)}</td>
+        <td class="td-r mono fw6 ${bufC}">${buf}</td>
       </tr>`;
     });
     html+=`</tbody></table></div></div>`;
@@ -1520,6 +1589,7 @@ function renderHC(){
 
   el.innerHTML=html;
 }
+
 
 // ═══════════════════════════════════════════════════
 // INIT
