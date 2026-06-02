@@ -1105,12 +1105,13 @@ async function addRealCol(){
   renderAgency();
 }
 async function setHC(aid,wk,v){
-  const hc=parseInt(v)||0;
+  const hc=v===''||v===null?null:parseInt(v);
   if(!S.agencyHC[aid])S.agencyHC[aid]={};
   S.agencyHC[aid][wk]=hc;
-  await sbPost('wms_agency_hc',[{agency_id:aid,week_key:wk,headcount:hc}]);
+  // Save to DB — store 0 for null (DB doesn't accept null for headcount easily)
+  await sbPost('wms_agency_hc',[{agency_id:aid,week_key:wk,headcount:hc??0}]);
   document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
-  // Re-render totals row and rotation (don't re-render whole table to avoid losing focus)
+  // Update rotation + totals without touching inputs
   renderAgencyTotalsOnly();
 }
 
@@ -1166,18 +1167,52 @@ function renderAgency(){ renderAgencyHC(); renderAgencyReal(); }
 function renderAgencyHC(){
   const wrap=document.getElementById('agency_hc');
   const wks=S.weekCols;
+  // Check if table structure already matches (same agencies + same weeks)
+  // If yes: update values in-place without rebuilding DOM
+  const existingTable=wrap.querySelector('table');
+  const existingCols=existingTable?existingTable.querySelectorAll('thead th').length:0;
+  const expectedCols=wks.length+3; // name + weeks + rotation + delete
+  const existingRows=existingTable?existingTable.querySelectorAll('tbody tr[data-aid]').length:0;
+  if(existingTable && existingCols===expectedCols && existingRows===S.agencies.length){
+    // Structure unchanged — just update values in-place
+    S.agencies.forEach(a=>{
+      wks.forEach(w=>{
+        const inp=wrap.querySelector(`input[data-aid="${a.id}"][data-wk="${w}"]`);
+        if(inp && document.activeElement!==inp){
+          // Only update if not currently being edited
+          const v=S.agencyHC[a.id]?.[w];
+          inp.value=v!=null?v:'';
+        }
+      });
+      const rotEl=document.getElementById('rot_'+a.id);
+      if(rotEl){
+        const rot=getRotation(a.id);
+        rotEl.textContent=rot!=null?pct(rot):'—';
+        rotEl.className='td-r fw6 '+(rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen');
+      }
+    });
+    renderAgencyTotalsOnly();
+    return;
+  }
+  // Full rebuild (first render or structure changed)
   let html=`<table><thead><tr><th style="min-width:200px">Agencja</th>${wks.map(w=>`<th class="td-r">${w}</th>`).join('')}<th class="td-r">Rotacja</th><th></th></tr></thead><tbody>`;
   S.agencies.forEach(a=>{
     const rot=getRotation(a.id);
     const rc=rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen';
-    html+=`<tr><td class="fw6">${a.name}</td>
-      ${wks.map(w=>{const v=S.agencyHC[a.id]?.[w];return`<td class="td-r"><input class="ii" type="number" value="${v!=null?v:''}" placeholder="—" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`}).join('')}
+    html+=`<tr data-aid="${a.id}"><td class="fw6">${a.name}</td>
+      ${wks.map(w=>{
+        const v=S.agencyHC[a.id]?.[w];
+        return `<td class="td-r"><input class="ii" type="number"
+          data-aid="${a.id}" data-wk="${w}"
+          value="${v!=null?v:''}" placeholder="—"
+          onchange="setHC(${a.id},'${w}',this.value)"
+          style="width:80px"></td>`;
+      }).join('')}
       <td id="rot_${a.id}" class="td-r fw6 ${rc}">${rot!=null?pct(rot):'—'}</td>
       <td><button class="btn btn-sm btn-d" onclick="removeAgency(${a.id})">✕</button></td>
     </tr>`;
   });
   const totals=wks.map(w=>S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]??0),0));
-  // Show dash instead of 0 if NO agency has set a value for this week
   const totalsDisplay=totals.map((t,i)=>{
     const anySet=S.agencies.some(a=>S.agencyHC[a.id]?.[wks[i]]!=null);
     return anySet?t:'—';
