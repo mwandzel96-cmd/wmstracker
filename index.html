@@ -527,18 +527,20 @@ async function bootstrap(){
       S.rotMode=d.rot_mode||'percent';
       S.rotFixed=d.rot_fixed||10;
     }
-    // Forecast matrix IB/OB
+    // Forecast matrix IB/OB — load from Supabase
+    setDbStatus('loading','Ładowanie macierzy…');
     const matrixRows = await sbGet('wms_fcst_matrix','?order=date_key.asc,fcst_date.asc&limit=20000');
     S.ibMatrix={}; S.obMatrix={};
-    S.fcstDates=new Set();
+    const fcstDateSet=new Set();
     (matrixRows||[]).forEach(r=>{
       if(!S.ibMatrix[r.date_key]) S.ibMatrix[r.date_key]={};
       if(!S.obMatrix[r.date_key]) S.obMatrix[r.date_key]={};
       if(r.ib!=null) S.ibMatrix[r.date_key][r.fcst_date]=r.ib;
       if(r.ob!=null) S.obMatrix[r.date_key][r.fcst_date]=r.ob;
-      S.fcstDates.add(r.fcst_date);
+      fcstDateSet.add(r.fcst_date);
     });
-    S.fcstDates=[...S.fcstDates].sort();
+    S.fcstDates=[...fcstDateSet].sort();
+    console.log(`Matrix loaded: ${Object.keys(S.ibMatrix).length} IB days, ${S.fcstDates.length} fcst versions`);
     // Daily plans
     const plans = await sbGet('wms_daily_plans','?order=date_key.asc');
     (plans||[]).forEach(p=>{ S.dailyPlans[p.date_key]={ib:p.ib,ob:p.ob,manual:p.manual}; });
@@ -800,7 +802,10 @@ async function addFcstCol(type){
   const fd = document.getElementById(inputId).value;
   if(!fd){alert('Wybierz datę kolumny');return;}
   if(S.fcstDates.includes(fd)){alert('Ta data już istnieje');return;}
-  S.fcstDates.push(fd); S.fcstDates.sort();
+  S.fcstDates.push(fd);
+  S.fcstDates.sort();
+  // Clear the input
+  document.getElementById(inputId).value='';
   renderMatrix(type);
 }
 
@@ -811,24 +816,33 @@ function renderMatrix(type){
   const matrix = type==='ib'?S.ibMatrix:S.obMatrix;
   const fds = S.fcstDates;
 
-  // All unique date_keys
+  // All unique date_keys from matrix + plans
   const allDks = new Set([
     ...Object.keys(matrix),
     ...Object.keys(S.dailyPlans)
   ]);
-  const dks = [...allDks].sort();
 
-  if(!dks.length&&!fds.length){
-    el.innerHTML='<div class="empty" style="padding:32px"><span class="text-sm c2">Brak danych. Kliknij "Załaduj historię" lub dodaj kolumnę.</span></div>';
+  // If no rows yet but we have fcst columns, generate a date range to show
+  const today = new Date().toISOString().split('T')[0];
+  if(!allDks.size && fds.length>0){
+    // Generate rows from earliest fcst_date - 7 to earliest fcst_date + 120
+    const earliest = fds[0];
+    const d = new Date(earliest+'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate()-7);
+    for(let i=0;i<130;i++){
+      allDks.add(d.toISOString().split('T')[0]);
+      d.setUTCDate(d.getUTCDate()+1);
+    }
+  }
+
+  if(!allDks.size && !fds.length){
+    el.innerHTML='<div style="padding:24px 20px"><div class="notice n-blue" style="margin-bottom:12px"><span>ℹ️</span><div>Brak danych. Wybierz datę i kliknij <strong>+ Dodaj kolumnę</strong> aby dodać pierwszą wersję prognozy, lub kliknij <strong>↓ Załaduj historię</strong> aby pobrać dane z bazy.</div></div></div>';
     return;
   }
 
-  // Show last 30 days of row dates + future if any
-  const today = new Date().toISOString().split('T')[0];
-  // Show all dks
+  const dks = [...allDks].sort();
   const visibleDks = dks;
-
-  // Show last 14 fcst columns + any future
+  // Show last 20 fcst columns
   const visFds = fds.slice(-20);
 
   const days=['Nd','Pn','Wt','Śr','Cz','Pt','So'];
@@ -900,28 +914,32 @@ async function setMatrixVal(type, dk, fd, val){
 
 // Seed from historical data (loaded from DOD file)
 async function importSeedMatrix(type){
-  if(!confirm(`Załadować historię ${type.toUpperCase()} z pliku DOD_FCST_COMPARISON? To może chwilę potrwać.`))return;
-  setDbStatus('loading','Ładowanie historii…');
+  setDbStatus('loading','Ładowanie z bazy…');
   try{
-    // Load data via fetch from seed endpoint or use embedded minimal data
-    // We'll trigger a special seed function
     await seedHistoricalData(type);
     renderMatrix(type);
-    setDbStatus('ok','✓ Historia załadowana');
+    const count = Object.keys(type==='ib'?S.ibMatrix:S.obMatrix).length;
+    if(count===0){
+      setDbStatus('err','Brak danych w bazie. Uruchom najpierw SQL: add_fcst_matrix.sql');
+    } else {
+      setDbStatus('ok',`✓ Załadowano ${count} dni`);
+    }
   }catch(e){
     setDbStatus('err','Błąd: '+e.message);
+    console.error(e);
   }
 }
 
 async function importSeedReal(){
-  if(!confirm('Załadować historyczną realizację z DOD_FCST_COMPARISON?'))return;
-  setDbStatus('loading','Ładowanie…');
+  setDbStatus('loading','Ładowanie realizacji…');
   try{
     await seedHistoricalReal();
     renderRealMatrix();
-    setDbStatus('ok','✓ Historia załadowana');
+    const count = Object.keys(S.dailyReal).length;
+    setDbStatus('ok', count>0 ? `✓ Załadowano ${count} dni realizacji` : 'Brak danych realizacji w bazie');
   }catch(e){
     setDbStatus('err','Błąd: '+e.message);
+    console.error(e);
   }
 }
 
