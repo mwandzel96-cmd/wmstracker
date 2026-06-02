@@ -528,6 +528,9 @@ async function bootstrap(){
     document.getElementById('hours_pw').value=S.hoursPerWorker;
     document.getElementById('absence').value=(S.absenceRate*100);
     document.getElementById('rot_fixed').value=S.rotFixed;
+    S.hcHours=60;
+    const hInitEl=document.getElementById('hseg-60');
+    if(hInitEl) hInitEl.classList.add('active');
 
     setDbStatus('ok','✓ Połączono');
     document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
@@ -1435,47 +1438,38 @@ function renderHC(){
 
   // Simulate HC trajectory — hc to "efektywny HC" (uwzględnia ramp-up)
   // pipeline: [{count, weeksIn}] = pracownicy w trakcie wdrożenia
-  function simulate(h,r){
-    const states=[];      // efektywny HC per tydzień
-    const statesFull=[];  // pełny (głowowy) HC per tydzień
-    let hc=getTotalHC();  // głowowy HC na starcie
-    let pipe=[];          // [{count, weeksIn}] — nowi w trakcie ramp-up
-
+  function simulate(h,r,addHires=true){
+    const states=[];
+    let hc=getTotalHC();
+    let pipe=[];
     for(let i=0;i<weeks.length;i++){
-      // 1. Nowi wchodzą w tym tygodniu (brutto * realizacja agencji)
-      const newReal=Math.round((h[i]||0)*avgReal);
-      if(newReal>0) pipe.push({count:newReal, weeksIn:1});
-      // 2. Zwolnienia (efekt natychmiastowy)
+      if(addHires){
+        const newReal=Math.round((h[i]||0)*avgReal);
+        if(newReal>0) pipe.push({count:newReal, weeksIn:1});
+      }
       hc-=(r[i]||0);
       hc=Math.max(0,hc);
-      // 3. Efektywny HC = pełny HC + wkład ramp-up grupy
-      //    Osoby w pipe NIE liczymy jeszcze w "hc" (wejdą po ramp-up)
-      //    Efektywny = hc (w pełni wdrożeni) + sum(group.count * rampEff(group.weeksIn))
       const pipeEff=pipe.reduce((s,g)=>s+Math.round(g.count*rampEff(g.weeksIn)),0);
-      const effHC=hc+pipeEff;
-      states.push(effHC);
-      statesFull.push(hc+pipe.reduce((s,g)=>s+g.count,0));
-      // 4. Zakończenie ramp-up → przejście do pełnego HC
+      states.push(hc+pipeEff);
       pipe=pipe.map(g=>({...g,weeksIn:g.weeksIn+1}));
-      const graduated=pipe.filter(g=>g.weeksIn>RAMP.length).reduce((s,g)=>s+g.count,0);
-      hc+=graduated;
+      const grad=pipe.filter(g=>g.weeksIn>RAMP.length).reduce((s,g)=>s+g.count,0);
+      hc+=grad;
       pipe=pipe.filter(g=>g.weeksIn<=RAMP.length);
-      // 5. Rotacja (od pełnego HC)
       hc=applyRot(hc);
     }
-    return {eff:states, full:statesFull};
+    return states;
   }
 
   // PASS 1 — plan hires z uwzględnieniem ramp-up
   // Dla każdego tygodnia i: patrz LEAD tygodni naprzód.
   // Jeśli efektywny HC < 100% needed → zatrudnij teraz tyle, żeby osiągnąć TARGET.
   for(let i=0;i<weeks.length;i++){
-    const sim=simulate(hires,releases);
+    const sim=simulate(hires,releases,true);
     for(let lead=1;lead<=LEAD;lead++){
       const t=i+lead;
       if(t>=weeks.length) break;
-      if(sim.eff[t]>=needed[t]) continue;
-      const gap=Math.ceil(needed[t]*TARGET)-sim.eff[t];
+      if(sim[t]>=needed[t]) continue;
+      const gap=Math.ceil(needed[t]*TARGET)-sim[t];
       if(gap<=0) continue;
       // Ile efektywnych osób dostarczy jedna osoba zamówiona teraz po `lead` tygodniach?
       // = rampEff(lead) * avgReal * przeżywalność rotacji
@@ -1489,7 +1483,7 @@ function renderHC(){
   }
 
   // PASS 2 — plan releases (persistent surplus > 8% for 4+ weeks)
-  let sim2=simulate(hires,releases).eff;
+  let sim2=simulate(hires,releases,true);
   let i=0;
   while(i<weeks.length){
     if(needed[i]>0 && sim2[i]>needed[i]*1.08){
@@ -1503,7 +1497,7 @@ function renderHC(){
         if(excess>5){
           releases[i]=excess;
           // Rebuild sim after this release
-          const sim3=simulate(hires,releases).eff;
+          const sim3=simulate(hires,releases,true);
           for(let j=0;j<weeks.length;j++) sim2[j]=sim3[j];
         }
       }
@@ -1512,20 +1506,24 @@ function renderHC(){
   }
 
   // Build final rows
-  const finalSim=simulate(hires,releases);
+  const projSim=simulate(hires,releases,false);
+  const optSim =simulate(hires,releases,true);
   const rows=[];
   for(let i=0;i<weeks.length;i++){
-    const projHC=finalSim.eff[i];
+    const projHC=projSim[i];
     const zap=needed[i]-projHC;
     const bufPct=needed[i]>0?projHC/needed[i]:1;
-    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i]});
+    const optHC=optSim[i];
+    const optBuf=needed[i]>0?optHC/needed[i]:1;
+    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,optHC,optBuf,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i]});
   }
 
   // TABLE 1 — Projekcja HC
   let html=`<div class="card mb-20"><div class="card-body-0 tscroll"><table>
     <thead><tr>
       <th>WK</th><th>Okres</th>
-      <th class="td-r" title="Prognoza stanu osobowego po uwzględnieniu rotacji i planowanych wejść/zwolnień">Proj. HC ⓘ</th>
+      <th class="td-r" title="Czysty trend z samą rotacją — bez nowych wejść">Proj. HC ⓘ</th>
+      <th class="td-r" title="HC po planowanych wejściach z ramp-up 60→75→85→100%">Z wejściami ⓘ</th>
       <th class="td-r">HC Needed</th>
       <th class="td-r">Zapotrzebowanie</th>
       <th class="td-r">Bufor</th>
@@ -1536,10 +1534,12 @@ function renderHC(){
     const zapC=zap>5?'cred':zap<-20?'cgreen':'c2';
     const cls=zap>5?'hc-deficit':zap<-30?'hc-surplus':'';
     const bufColor=r.bufPct<1?'cred':r.bufPct>1.10?'corange':'cgreen';
+    const optC=r.optBuf<1?'cred':r.optBuf>1.10?'corange':'cgreen';
     html+=`<tr class="${cls}">
       <td class="fw7 cblue">WK${r.wkN}</td>
       <td class="c2 text-sm" style="white-space:nowrap">WK${r.wkN} (${wkPeriod(r.wkStart)})</td>
-      <td class="td-r mono fw6">${num(r.projHC)}</td>
+      <td class="td-r mono c2">${num(r.projHC)}</td>
+      <td class="td-r mono fw6 ${optC}">${num(r.optHC)}</td>
       <td class="td-r mono">${num(r.needed)}</td>
       <td class="td-r mono fw6 ${zapC}">${zapStr}</td>
       <td class="td-r mono fw6 ${bufColor}">${r.needed>0?(r.bufPct*100).toFixed(1)+'%':'—'}</td>
@@ -1556,7 +1556,7 @@ function renderHC(){
     html+=`<div class="notice n-blue mb-12"><span>ℹ️</span><div class="text-sm">
       Cel: <strong>100–108% HC Needed</strong> (optimum 104%). Wejścia z <strong>${LEAD}-tygodniowym</strong> wyprzedzeniem.
       Realizacja agencji: <strong>${(avgReal*100).toFixed(0)}%</strong> &nbsp;·&nbsp;
-      Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'}.
+      Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'} &nbsp;·&nbsp; Godziny: <strong>${hrsPerWk}h/tydz</strong>${hrsPerWk>S.hoursPerWorker?' ⚡ tryb intensywny':''}
     </div></div>
     <div class="card"><div class="card-body-0 tscroll"><table>
       <thead><tr>
