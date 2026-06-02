@@ -1309,23 +1309,29 @@ function calcWeek(days){
   let ib=0,ob=0;
   for(const d of days){ const p=S.dailyPlans[d.dk]||{ib:d.ib,ob:d.ob}; ib+=p.ib||0; ob+=p.ob||0; }
   const h=S.hoursPerWorker,abs=S.absenceRate;
-  // Gross hours needed per dept
-  const ppHGross=S.tph.pp>0?ob/S.tph.pp:0;
-  const shipHGross=S.tph.ship>0?ob/S.tph.ship:0;
-  const ibHGross=S.tph.ib>0?ib/S.tph.ib:0;
-  // Subtract IDL hours (contracted staff) — agency hours only
   const idl=getIdlHours();
-  const ppH=Math.max(0,ppHGross-idl.pp);
+  // Gross hours per dept (from TPH settings)
+  const ppHGross  = S.tph.pp>0   ? ob/S.tph.pp   : 0;
+  const shipHGross= S.tph.ship>0 ? ob/S.tph.ship : 0;
+  const ibHGross  = S.tph.ib>0   ? ib/S.tph.ib   : 0;
+  // Net hours = gross minus IDL (contracted staff, 40h/wk)
+  const ppH  =Math.max(0,ppHGross  -idl.pp);
   const shipH=Math.max(0,shipHGross-idl.ship);
-  const ibH=Math.max(0,ibHGross-idl.ib);
-  const wkH=ppH+shipH+ibH;
-  // HC needed (agency only, after IDL deduction, with absence correction)
-  const totalHC=h>0?Math.ceil(wkH/h/(1-abs)):0;
+  const ibH  =Math.max(0,ibHGross  -idl.ib);
   const grossH=ppHGross+shipHGross+ibHGross;
-  const idlH=idl.pp+idl.ship+idl.ib+idl.other;
+  const idlH  =idl.pp+idl.ship+idl.ib+idl.other;
+  const wkH   =ppH+shipH+ibH;
+  // HC agency (per dept, with absence correction)
+  const ppHC  =h>0?ppH  /h/(1-abs):0;
+  const shipHC=h>0?shipH/h/(1-abs):0;
+  const ibHC  =h>0?ibH  /h/(1-abs):0;
+  const totalHC=Math.ceil(ppHC+shipHC+ibHC);
   const predTPH=grossH>0?(ib+ob)/grossH:0;
-  return {ib,ob,ppHGross,shipHGross,ibHGross,ppH,shipH,ibH,grossH,idlH,wkH,
-    ppHC:ppH/h,shipHC:shipH/h,ibHC:ibH/h,totalHC,predTPH,days};
+  return {ib,ob,
+    ppHGross,shipHGross,ibHGross,grossH,
+    ppIdl:idl.pp,shipIdl:idl.ship,ibIdl:idl.ib,idlH,
+    ppH,shipH,ibH,wkH,
+    ppHC,shipHC,ibHC,totalHC,predTPH,days};
 }
 function renderSummary(){
   const el=document.getElementById('summary_content');
@@ -1345,37 +1351,25 @@ function renderSummary(){
         <div class="kpi"><div class="kpi-label">Predicted OPS TPH</div><div class="kpi-value orange">${s.predTPH>0?s.predTPH.toFixed(1):'—'}</div><div class="kpi-sub">throughput ÷ gross hours</div></div>
         <div class="kpi"><div class="kpi-label">Total HC Needed</div><div class="kpi-value orange">${num(s.totalHC)}</div><div class="kpi-sub">agenc. · absencja ${(S.absenceRate*100).toFixed(0)}%</div></div>
       </div>
-      <div class="ga mb-16" style="grid-template-columns:repeat(3,1fr)">
-        <div class="kpi" style="border:1px solid #e5e5ea;border-radius:10px;padding:14px">
-          <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:8px">P&amp;P / SHIP (OB)</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px">
-            <div class="c2">Gross hours</div><div class="td-r mono fw6">${num(s.ppHGross+s.shipHGross,0)}h</div>
-            <div class="c2" style="padding-left:8px;font-size:12px">P&amp;P</div><div class="td-r mono c2">${num(s.ppHGross,0)}h</div>
-            <div class="c2" style="padding-left:8px;font-size:12px">SHIP</div><div class="td-r mono c2">${num(s.shipHGross,0)}h</div>
-            <div class="c2">IDL (−)</div><div class="td-r mono" style="color:var(--red)">−${num(s.ppHGross+s.shipHGross-s.ppH-s.shipH,0)}h</div>
-            <div class="fw6">Net hours</div><div class="td-r mono fw6 cblue">${num(s.ppH+s.shipH,0)}h</div>
-            <div class="c2">HC agenc.</div><div class="td-r mono fw6">${num(s.ppHC+s.shipHC,1)}</div>
+      <div class="ga mb-16" style="grid-template-columns:repeat(4,1fr)">
+        ${[
+          {label:'P&P',gross:s.ppHGross,idl:s.ppIdl,net:s.ppH,hc:s.ppHC},
+          {label:'SHIP',gross:s.shipHGross,idl:s.shipIdl,net:s.shipH,hc:s.shipHC},
+          {label:'IB',gross:s.ibHGross,idl:s.ibIdl,net:s.ibH,hc:s.ibHC},
+          {label:'RAZEM',gross:s.grossH,idl:s.idlH,net:s.wkH,hc:s.ppHC+s.shipHC+s.ibHC,total:true}
+        ].map(d=>`
+          <div style="border:1px solid ${d.total?'#0071e3':'#e5e5ea'};border-radius:10px;padding:14px;background:${d.total?'#f0f7ff':'#fff'}">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:${d.total?'var(--blue)':'var(--text3)'};margin-bottom:10px">${d.label}</div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:3px 14px;font-size:12px;align-items:baseline">
+              <div class="c2">Gross hours</div><div class="mono fw6">${num(d.gross,0)}h</div>
+              <div class="c2" style="color:var(--red)">IDL (−)</div><div class="mono" style="color:var(--red)">−${num(d.idl,0)}h</div>
+              <div style="border-top:1px solid #e5e5ea;padding-top:4px;margin-top:2px;font-weight:700">Net hours</div>
+              <div class="mono fw6 cblue" style="border-top:1px solid #e5e5ea;padding-top:4px;margin-top:2px">${num(d.net,0)}h</div>
+              <div class="fw6 ${d.total?'cblue':''}">HC agenc.</div>
+              <div class="mono fw6 ${d.total?'corange':''}" style="font-size:14px">${d.total?num(s.totalHC):num(d.hc,1)}</div>
+            </div>
           </div>
-        </div>
-        <div class="kpi" style="border:1px solid #e5e5ea;border-radius:10px;padding:14px">
-          <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:8px">IB</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px">
-            <div class="c2">Gross hours</div><div class="td-r mono fw6">${num(s.ibHGross,0)}h</div>
-            <div class="c2" style="padding-left:8px;font-size:12px">IB dept</div><div class="td-r mono c2">${num(s.ibHGross,0)}h</div>
-            <div class="c2">IDL (−)</div><div class="td-r mono" style="color:var(--red)">−${num(s.ibHGross-s.ibH,0)}h</div>
-            <div class="fw6">Net hours</div><div class="td-r mono fw6 cblue">${num(s.ibH,0)}h</div>
-            <div class="c2">HC agenc.</div><div class="td-r mono fw6">${num(s.ibHC,1)}</div>
-          </div>
-        </div>
-        <div class="kpi" style="border:1px solid #e5e5ea;border-radius:10px;padding:14px">
-          <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:8px">Razem</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px">
-            <div class="c2">Gross hours</div><div class="td-r mono fw6">${num(s.grossH,0)}h</div>
-            <div class="c2">IDL (−)</div><div class="td-r mono" style="color:var(--red)">−${num(s.idlH,0)}h</div>
-            <div class="fw6">Net hours</div><div class="td-r mono fw6 cblue">${num(s.wkH,0)}h</div>
-            <div class="c2">HC agenc.</div><div class="td-r mono fw6 corange">${num(s.totalHC)}</div>
-          </div>
-        </div>
+        `).join('')}
       </div>
       <div class="card">
         <div class="card-body-0 tscroll"><table><thead><tr>
