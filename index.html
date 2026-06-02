@@ -1041,7 +1041,8 @@ async function addWeekCol(){
   // Init HC=0 for all agencies for this week
   const upserts=S.agencies.map(a=>({agency_id:a.id,week_key:key,headcount:0}));
   if(upserts.length) await sbPost('wms_agency_hc',upserts);
-  S.agencies.forEach(a=>{if(!S.agencyHC[a.id])S.agencyHC[a.id]={};S.agencyHC[a.id][key]=0;});
+  // Initialize as undefined so rotation doesn't count empty weeks as 0
+  S.agencies.forEach(a=>{if(!S.agencyHC[a.id])S.agencyHC[a.id]={};});
   await saveSettings();
   renderAgency();
 }
@@ -1058,11 +1059,31 @@ async function setHC(aid,wk,v){
   S.agencyHC[aid][wk]=hc;
   await sbPost('wms_agency_hc',[{agency_id:aid,week_key:wk,headcount:hc}]);
   document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
-  // update total row
+  // Re-render totals row and rotation (don't re-render whole table to avoid losing focus)
+  renderAgencyTotalsOnly();
+}
+
+function renderAgencyTotalsOnly(){
+  const wks=S.weekCols;
+  // Update total cells
   const totalCells=document.querySelectorAll('.agency-total-cell');
-  S.weekCols.forEach((w,i)=>{
+  wks.forEach((w,i)=>{
     const tot=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]||0),0);
     if(totalCells[i]) totalCells[i].textContent=tot;
+  });
+  // Update avg rotation
+  const avgEl=document.getElementById('agency_avg_rot');
+  if(avgEl){
+    const avg=getAvgRotation();
+    avgEl.textContent=avg!=null?pct(avg):'—';
+  }
+  // Update per-agency rotation cells
+  S.agencies.forEach(a=>{
+    const el=document.getElementById('rot_'+a.id);
+    if(!el) return;
+    const rot=getRotation(a.id);
+    el.textContent=rot!=null?pct(rot):'—';
+    el.className='td-r fw6 '+(rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen');
   });
 }
 async function setAReal(aid,dt,v){
@@ -1075,7 +1096,15 @@ function getRotation(aid){
   const wks=S.weekCols; if(wks.length<2)return null;
   const hc=S.agencyHC[aid]||{};
   const changes=[];
-  for(let i=1;i<wks.length;i++){ const p=hc[wks[i-1]]||0,c=hc[wks[i]]||0; if(p>0) changes.push((p-c)/p); }
+  for(let i=1;i<wks.length;i++){
+    const p=hc[wks[i-1]];
+    const cur=hc[wks[i]];
+    // Only count if both weeks have been explicitly set (not undefined/null)
+    // and previous week had at least 1 person
+    if(p!=null && cur!=null && p>0){
+      changes.push((p-cur)/p);
+    }
+  }
   return changes.length?changes.reduce((s,v)=>s+v,0)/changes.length:null;
 }
 function getAvgRotation(){
@@ -1091,14 +1120,14 @@ function renderAgencyHC(){
     const rot=getRotation(a.id);
     const rc=rot==null?'c3':rot>0.1?'cred':rot>0.05?'corange':'cgreen';
     html+=`<tr><td class="fw6">${a.name}</td>
-      ${wks.map(w=>`<td class="td-r"><input class="ii" type="number" value="${S.agencyHC[a.id]?.[w]||0}" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`).join('')}
-      <td class="td-r fw6 ${rc}">${rot!=null?pct(rot):'—'}</td>
+      ${wks.map(w=>`<td class="td-r"><input class="ii" type="number" value="${S.agencyHC[a.id]?.[w]??''}" placeholder="0" onchange="setHC(${a.id},'${w}',this.value)" style="width:80px"></td>`).join('')}
+      <td id="rot_${a.id}" class="td-r fw6 ${rc}">${rot!=null?pct(rot):'—'}</td>
       <td><button class="btn btn-sm btn-d" onclick="removeAgency(${a.id})">✕</button></td>
     </tr>`;
   });
-  const totals=wks.map(w=>S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]||0),0));
+  const totals=wks.map(w=>S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[w]??0),0));
   const avgRot=getAvgRotation();
-  html+=`<tr class="tfoot-row"><td><strong>Razem</strong></td>${totals.map(t=>`<td class="td-r cblue fw6 agency-total-cell">${t}</td>`).join('')}<td class="td-r corange fw6">${avgRot!=null?pct(avgRot):'—'}</td><td></td></tr>`;
+  html+=`<tr class="tfoot-row"><td><strong>Razem</strong></td>${totals.map(t=>`<td class="td-r cblue fw6 agency-total-cell">${t}</td>`).join('')}<td id="agency_avg_rot" class="td-r corange fw6">${avgRot!=null?pct(avgRot):'—'}</td><td></td></tr>`;
   wrap.innerHTML=html+'</tbody></table>';
 }
 function renderAgencyReal(){
