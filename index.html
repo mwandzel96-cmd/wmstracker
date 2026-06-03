@@ -405,6 +405,8 @@ const S = {
   weekCols:['WK22'], realCols:[],
   idlDepts:[],
   rotMode:'percent', rotFixed:10,
+  hcHours:null,
+  hcEntries:{},
 };
 
 // ═══════════════════════════════════════════════════
@@ -1431,19 +1433,20 @@ function getAvgAgencyReal(){
 function renderHC(){
   const el=document.getElementById('hc_content');
   const weeks=getFullWeeks();
-  if(!weeks.length){el.innerHTML='<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">Wgraj prognozę</div></div>';return;}
+  if(!weeks.length){
+    el.innerHTML='<div class="empty"><span class="empty-icon">👥</span><div class="empty-title">Wgraj prognozę</div></div>';
+    return;
+  }
 
   const avgRot=getAvgRotation();
   if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
-  const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed;
+  const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed||0;
   const usePercent=S.rotMode==='percent';
-  const avgReal=Math.max(0.5,getAvgAgencyReal());
-  const TARGET=1.04; // cel: 104% HC Needed
-  const LEAD=3;      // tygodnie wyprzedzenia wejść
   const hrsPerWk=S.hcHours??S.hoursPerWorker;
 
   function applyRot(hc){
-    return usePercent&&avgRot!=null?Math.round(hc*(1-avgRot)):Math.max(0,hc-rotFixed);
+    if(usePercent&&avgRot!=null) return Math.round(hc*(1-avgRot));
+    return Math.max(0,hc-rotFixed);
   }
   function wkPeriod(start){
     const end=new Date(start); end.setUTCDate(start.getUTCDate()+6);
@@ -1451,197 +1454,86 @@ function renderHC(){
     return `${fmt(start)}\u2013${fmt(end)}`;
   }
 
-  const needed=weeks.map(w=>{
-    const s=calcWeek(w.days);
-    if(hrsPerWk===S.hoursPerWorker) return s.totalHC;
-    const abs=S.absenceRate;
-    return Math.ceil((s.ppH+s.shipH+s.ibH)/hrsPerWk/(1-abs));
-  });
-  const hires=new Array(weeks.length).fill(0);   // brutto zamówionych (u agencji)
-  const releases=new Array(weeks.length).fill(0);
-  // Ramp-up: nowi pracownicy przez pierwsze 3 tygodnie są tylko częściowo efektywni
-  // tydzień 1=60%, tydzień 2=75%, tydzień 3=85%, tydzień 4+=100%
-  const RAMP=[0.60,0.75,0.85]; // indeks = numer tygodnia od wejścia (0-based), brak = 1.0
-
-  // Efektywny wkład nowej grupy hired w tygodniu hireWk, mierzony w tygodniu targetWk
-  function rampEff(lead){ return lead<=0?1.0:lead<=RAMP.length?RAMP[lead-1]:1.0; }
-
-  // Simulate HC trajectory — hc to "efektywny HC" (uwzględnia ramp-up)
-  // pipeline: [{count, weeksIn}] = pracownicy w trakcie wdrożenia
-  // Starting HC = stan agencji w tygodniu odpowiadającym pierwszemu tygodniowi prognozy
-  // Jeśli brak dokładnego dopasowania → najnowszy dostępny
-  const firstWkN = weeks.length>0 ? isoWeek(weeks[0].start) : null;
-  const startHC = (()=>{
-    if(firstWkN==null) return getTotalHC();
-    // Szukaj tygodnia w weekCols który pasuje numerem (WK23, WK24 itd.)
-    // Bierz ten tydzień lub wcześniejszy (ostatni dostępny przed pierwszym tygodniem prognozy)
-    const wks=[...S.weekCols];
-    // Sort numerycznie
-    wks.sort((a,b)=>{
-      const na=parseInt(a.replace('WK','')), nb=parseInt(b.replace('WK',''));
-      return na-nb;
-    });
-    let best=null;
-    for(const wk of wks){
-      const n=parseInt(wk.replace('WK',''));
-      const total=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]??0),0);
-      if(total>0) best=total;
-      if(n>=firstWkN) break; // zatrzymaj się na lub przed pierwszym tygodniem prognozy
-    }
-    return best ?? getTotalHC();
-  })();
-
-  function simulate(h,r,addHires=true){
-    const states=[];
-    let hc=startHC;
-    let pipe=[];
-    for(let i=0;i<weeks.length;i++){
-      if(addHires){
-        const newReal=Math.round((h[i]||0)*avgReal);
-        if(newReal>0) pipe.push({count:newReal, weeksIn:1});
-      }
-      hc-=(r[i]||0);
-      hc=Math.max(0,hc);
-      const pipeEff=pipe.reduce((s,g)=>s+Math.round(g.count*rampEff(g.weeksIn)),0);
-      states.push(hc+pipeEff);
-      pipe=pipe.map(g=>({...g,weeksIn:g.weeksIn+1}));
-      const grad=pipe.filter(g=>g.weeksIn>RAMP.length).reduce((s,g)=>s+g.count,0);
-      hc+=grad;
-      pipe=pipe.filter(g=>g.weeksIn<=RAMP.length);
-      hc=applyRot(hc);
-    }
-    return states;
+  // Starting HC: bierz kolumnę agencji pasującą do pierwszego tygodnia prognozy
+  const firstWkN=isoWeek(weeks[0].start);
+  let startHC=0;
+  const wksSorted=[...S.weekCols].sort((a,b)=>parseInt(a.replace('WK',''))-parseInt(b.replace('WK','')));
+  let bestMatch=null;
+  for(const wk of wksSorted){
+    const n=parseInt(wk.replace('WK',''));
+    const tot=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]??0),0);
+    if(tot>0) bestMatch=tot;
+    if(n>=firstWkN) break;
   }
+  startHC=bestMatch??S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wksSorted[wksSorted.length-1]]??0),0);
 
-  // PASS 1 — plan hires z uwzględnieniem ramp-up
-  // Dla każdego tygodnia i: patrz LEAD tygodni naprzód.
-  // Jeśli efektywny HC < 100% needed → zatrudnij teraz tyle, żeby osiągnąć TARGET.
-  for(let i=0;i<weeks.length;i++){
-    const sim=simulate(hires,releases,true);
-    for(let lead=1;lead<=LEAD;lead++){
-      const t=i+lead;
-      if(t>=weeks.length) break;
-      if(sim[t]>=needed[t]) continue;
-      const gap=Math.ceil(needed[t]*TARGET)-sim[t];
-      if(gap<=0) continue;
-      // Ile efektywnych osób dostarczy jedna osoba zamówiona teraz po `lead` tygodniach?
-      // = rampEff(lead) * avgReal * przeżywalność rotacji
-      let survival=1.0;
-      for(let j=0;j<lead;j++) survival=usePercent&&avgRot!=null?survival*(1-avgRot):Math.max(0,survival-rotFixed/Math.max(1,getTotalHC()));
-      const effPerPerson=rampEff(lead)*avgReal*Math.max(0.3,survival);
-      const gross=Math.ceil(gap/effPerPerson);
-      hires[i]=Math.max(hires[i],gross);
-      break; // obsłuż najbliższy deficyt
-    }
-  }
-
-  // PASS 2 — plan releases (persistent surplus > 8% for 4+ weeks)
-  let sim2=simulate(hires,releases,true);
-  let i=0;
-  while(i<weeks.length){
-    if(needed[i]>0 && sim2[i]>needed[i]*1.08){
-      // Count consecutive surplus weeks
-      let cnt=0;
-      for(let k=i;k<Math.min(i+4,weeks.length);k++){
-        if(sim2[k]>needed[k]*1.08) cnt++;
-      }
-      if(cnt>=4){
-        const excess=Math.floor(sim2[i]-Math.ceil(needed[i]*TARGET));
-        if(excess>5){
-          releases[i]=excess;
-          // Rebuild sim after this release
-          const sim3=simulate(hires,releases,true);
-          for(let j=0;j<weeks.length;j++) sim2[j]=sim3[j];
-        }
-      }
-    }
-    i++;
-  }
-
-  // Build final rows
-  const projSim=simulate(hires,releases,false);
-  const optSim =simulate(hires,releases,true);
+  // Build rows
+  let hc=startHC;
   const rows=[];
   for(let i=0;i<weeks.length;i++){
-    const projHC=projSim[i];
-    const zap=needed[i]-projHC;
-    const bufPct=needed[i]>0?projHC/needed[i]:1;
-    const optHC=optSim[i];
-    const optBuf=needed[i]>0?optHC/needed[i]:1;
-    rows.push({wkN:isoWeek(weeks[i].start),wkStart:weeks[i].start,projHC,optHC,optBuf,needed:needed[i],zap,bufPct,hire:hires[i],release:releases[i],partial:weeks[i].partial});
+    const wkN=isoWeek(weeks[i].start);
+    const s=calcWeek(weeks[i].days);
+    const needed=hrsPerWk===S.hoursPerWorker
+      ? s.totalHC
+      : Math.ceil((s.ppH+s.shipH+s.ibH)/hrsPerWk/(1-S.absenceRate));
+
+    // Wejścia wpisane ręcznie przez użytkownika
+    const entry=S.hcEntries?.[wkN]??0;
+    // Proj HC = aktualny HC + wejścia - rotacja
+    const projHC=Math.round(hc+entry);
+    const zap=needed-projHC; // + brakuje, - nadwyżka
+
+    rows.push({wkN,wkStart:weeks[i].start,projHC,needed,zap,entry,partial:weeks[i].partial});
+
+    // Następny tydzień: dodaj wejścia, zastosuj rotację
+    hc=applyRot(hc+entry);
   }
 
-  // TABLE 1 — Projekcja HC
-  let html=`<div class="card mb-20"><div class="card-body-0 tscroll"><table>
+  // Table
+  let html=`<div class="card"><div class="card-body-0 tscroll"><table>
     <thead><tr>
-      <th>WK</th><th>Okres</th>
-      <th class="td-r" title="Czysty trend z samą rotacją — bez nowych wejść">Proj. HC ⓘ</th>
-      <th class="td-r" title="HC po planowanych wejściach z ramp-up 60→75→85→100%">Z wejściami ⓘ</th>
+      <th style="min-width:80px">WK</th>
+      <th style="min-width:180px">Okres</th>
+      <th class="td-r" title="Stan osobowy na początku tygodnia po uwzględnieniu rotacji i wejść">Proj. HC</th>
       <th class="td-r">HC Needed</th>
       <th class="td-r">Zapotrzebowanie</th>
-      <th class="td-r">Bufor</th>
+      <th class="td-r" style="min-width:130px">Wejścia (plan)</th>
     </tr></thead><tbody>`;
+
   rows.forEach(r=>{
-    const zap=r.zap;
-    const zapStr=(zap>0?'+':'')+num(zap);
-    const zapC=zap>5?'cred':zap<-20?'cgreen':'c2';
-    const cls=zap>5?'hc-deficit':zap<-30?'hc-surplus':'';
-    const bufColor=r.bufPct<1?'cred':r.bufPct>1.10?'corange':'cgreen';
-    const optC=r.optBuf<1?'cred':r.optBuf>1.10?'corange':'cgreen';
+    const zapStr=(r.zap>0?'+':'')+num(r.zap);
+    const zapC=r.zap>5?'cred':r.zap<-20?'cgreen':'c2';
+    const cls=r.zap>5?'hc-deficit':r.zap<-30?'hc-surplus':'';
     html+=`<tr class="${cls}">
-      <td class="fw7 cblue">WK${r.wkN}${r.partial?'<span class="text-xs c3" style="font-weight:400"> ~'+r.needed+'d</span>':''}</td>
+      <td class="fw7 cblue">WK${r.wkN}${r.partial?'<span class="c3" style="font-size:10px;font-weight:400"> ~</span>':''}</td>
       <td class="c2 text-sm" style="white-space:nowrap">WK${r.wkN} (${wkPeriod(r.wkStart)})</td>
-      <td class="td-r mono c2">${num(r.projHC)}</td>
-      <td class="td-r mono fw6 ${optC}">${num(r.optHC)}</td>
+      <td class="td-r mono fw6">${num(r.projHC)}</td>
       <td class="td-r mono">${num(r.needed)}</td>
       <td class="td-r mono fw6 ${zapC}">${zapStr}</td>
-      <td class="td-r mono fw6 ${bufColor}">${r.needed>0?(r.bufPct*100).toFixed(1)+'%':'—'}</td>
+      <td class="td-r">
+        <input class="ii" type="number" value="${r.entry||''}" placeholder="0"
+          style="width:100px;text-align:right"
+          onchange="setHCEntry(${r.wkN},this.value)">
+      </td>
     </tr>`;
   });
-  html+=`</tbody></table></div></div>`;
 
-  // TABLE 2 — Sugestie
-  html+=`<div style="font-size:16px;font-weight:700;margin-bottom:12px">Sugestie wejść i zwolnień</div>`;
-  const actions=rows.filter(r=>r.hire>0||r.release>0);
-  if(!actions.length){
-    html+=`<div class="notice n-green"><span>✅</span><div>Stan osobowy optymalny — brak potrzeby zmian w horyzoncie prognozy.</div></div>`;
-  } else {
-    html+=`<div class="notice n-blue mb-12"><span>ℹ️</span><div class="text-sm">
-      Cel: <strong>100–108% HC Needed</strong> (optimum 104%). Wejścia z <strong>${LEAD}-tygodniowym</strong> wyprzedzeniem.
-      Realizacja agencji: <strong>${(avgReal*100).toFixed(0)}%</strong> &nbsp;·&nbsp;
-      Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'} &nbsp;·&nbsp; Godziny: <strong>${hrsPerWk}h/tydz</strong>${hrsPerWk>S.hoursPerWorker?' ⚡ tryb intensywny':''}
-    </div></div>
-    <div class="card"><div class="card-body-0 tscroll"><table>
-      <thead><tr>
-        <th>Tydzień akcji</th><th>Okres</th>
-        <th class="td-r">Akcja</th>
-        <th class="td-r">Netto</th>
-        <th class="td-r">Brutto (zamów)</th>
-        <th class="td-r">HC po akcji</th>
-        <th class="td-r">HC Needed</th>
-        <th class="td-r">Bufor</th>
-      </tr></thead><tbody>`;
-    actions.forEach(r=>{
-      const isHire=r.hire>0;
-      const net=isHire?Math.round(r.hire*avgReal):r.release;
-      const buf=r.needed>0?(r.projHC/r.needed*100).toFixed(1)+'%':'—';
-      const bufC=r.projHC>=r.needed?'cgreen':'cred';
-      html+=`<tr>
-        <td class="fw7 cblue">WK${r.wkN}${r.partial?'<span class="text-xs c3" style="font-weight:400"> ~'+r.needed+'d</span>':''}</td>
-        <td class="c2 text-sm" style="white-space:nowrap">${wkPeriod(r.wkStart)}</td>
-        <td>${isHire?'<span class="fw6 cblue">▲ Wejście</span>':'<span class="fw6 corange">▼ Zwolnienie</span>'}</td>
-        <td class="td-r mono ${isHire?'cblue':'corange'}">${isHire?'+':'−'}${num(net)}</td>
-        <td class="td-r mono fw6 ${isHire?'cblue':'corange'}">${isHire?'+':'−'}${num(isHire?r.hire:r.release)}${isHire?'<span class="c3 text-xs" style="display:block">zamów u agencji</span>':''}</td>
-        <td class="td-r mono fw6">${num(r.projHC)}</td>
-        <td class="td-r mono c2">${num(r.needed)}</td>
-        <td class="td-r mono fw6 ${bufC}">${buf}</td>
-      </tr>`;
-    });
-    html+=`</tbody></table></div></div>`;
-  }
+  html+=`</tbody></table></div></div>
+  <div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">
+    Startowy HC: <strong>${startHC}</strong> (WK${firstWkN} z zakładki Agencje) &nbsp;·&nbsp;
+    Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'} &nbsp;·&nbsp;
+    Godziny: ${hrsPerWk}h/tydz
+  </div></div>`;
 
   el.innerHTML=html;
 }
+
+async function setHCEntry(wkN,val){
+  if(!S.hcEntries) S.hcEntries={};
+  S.hcEntries[wkN]=parseInt(val)||0;
+  renderHC();
+}
+
 
 
 // ═══════════════════════════════════════════════════
