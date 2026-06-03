@@ -718,7 +718,7 @@ async function saveForecast(filename,startDk,data,statusEl,found){
 
     setDbStatus('ok','✓ Zapisano');
     statusEl.innerHTML=`<span style="color:var(--green)">✅ ${data.length} dni · ${found.join(' · ')}</span>`;
-    renderFcstList(); renderComparison(); renderPlans(); renderRealization();
+    renderFcstList(); renderComparison(); renderPlans(); renderRealization(); renderSummary(); renderHC();
   }catch(e){
     setDbStatus('err','Błąd zapisu');
     statusEl.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;
@@ -737,7 +737,7 @@ function renderFcstList(){
       <button class="btn btn-sm btn-d" onclick="event.stopPropagation();deleteFcst(${f.id})">✕</button>
     </div>`).join('');
 }
-function setActiveFcst(id){S.activeFcstId=id;renderPlans();}
+function setActiveFcst(id){S.activeFcstId=id;renderPlans();renderSummary();renderHC();}
 async function deleteFcst(id){
   if(!confirm('Usunąć prognozę?'))return;
   await sbDel('wms_forecasts',`?id=eq.${id}`);
@@ -1282,18 +1282,20 @@ function renderIDL(){
 // ═══════════════════════════════════════════════════
 function getFullWeeks(){
   const fcst=S.forecasts.find(f=>f.id===S.activeFcstId)||S.forecasts[0];
-  if(!fcst)return[];
+  if(!fcst||!fcst.data?.length) return[];
   const byWeek={};
   for(const d of fcst.data){
+    // Ensure date object exists
+    if(!d.date && d.dk) d.date=new Date(d.dk+'T00:00:00Z');
+    if(!d.date) continue;
     const dow=d.date.getUTCDay();
-    // week starts on Sunday
-    const ws=new Date(d.date); ws.setUTCDate(d.date.getUTCDate()-dow);
+    const ws=new Date(Date.UTC(d.date.getUTCFullYear(),d.date.getUTCMonth(),d.date.getUTCDate()-dow));
     const wsk=dateKey(ws);
     if(!byWeek[wsk])byWeek[wsk]={start:ws,days:[],partial:false};
     byWeek[wsk].days.push(d);
   }
   return Object.values(byWeek)
-    .map(w=>({...w, partial:w.days.length<7}))
+    .map(w=>({...w,partial:w.days.length<7}))
     .filter(w=>w.days.length>=1)
     .sort((a,b)=>a.start-b.start);
 }
