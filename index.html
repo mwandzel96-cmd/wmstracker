@@ -718,7 +718,7 @@ async function saveForecast(filename,startDk,data,statusEl,found){
 
     setDbStatus('ok','✓ Zapisano');
     statusEl.innerHTML=`<span style="color:var(--green)">✅ ${data.length} dni · ${found.join(' · ')}</span>`;
-    renderFcstList(); renderComparison(); renderPlans(); renderRealization(); renderSummary(); renderHC();
+    renderFcstList(); renderComparison(); renderPlans(); renderRealization(); renderSummary(); try{renderHC();}catch(e){console.warn('renderHC:',e);}
   }catch(e){
     setDbStatus('err','Błąd zapisu');
     statusEl.innerHTML=`<span style="color:var(--red)">❌ ${e.message}</span>`;
@@ -1422,6 +1422,7 @@ function renderHC(){
   const avgReal=Math.max(0.5,getAvgAgencyReal());
   const TARGET=1.04; // cel: 104% HC Needed
   const LEAD=3;      // tygodnie wyprzedzenia wejść
+  const hrsPerWk=S.hcHours??S.hoursPerWorker;
 
   function applyRot(hc){
     return usePercent&&avgRot!=null?Math.round(hc*(1-avgRot)):Math.max(0,hc-rotFixed);
@@ -1432,7 +1433,12 @@ function renderHC(){
     return `${fmt(start)}\u2013${fmt(end)}`;
   }
 
-  const needed=weeks.map(w=>calcWeek(w.days).totalHC);
+  const needed=weeks.map(w=>{
+    const s=calcWeek(w.days);
+    if(hrsPerWk===S.hoursPerWorker) return s.totalHC;
+    const abs=S.absenceRate;
+    return Math.ceil((s.ppH+s.shipH+s.ibH)/hrsPerWk/(1-abs));
+  });
   const hires=new Array(weeks.length).fill(0);   // brutto zamówionych (u agencji)
   const releases=new Array(weeks.length).fill(0);
   // Ramp-up: nowi pracownicy przez pierwsze 3 tygodnie są tylko częściowo efektywni
