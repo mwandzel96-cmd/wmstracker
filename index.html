@@ -405,7 +405,6 @@ const S = {
   weekCols:['WK22'], realCols:[],
   idlDepts:[],
   rotMode:'percent', rotFixed:10,
-  hcHours:null,
   hcEntries:{},
 };
 
@@ -548,9 +547,7 @@ async function bootstrap(){
     document.getElementById('hours_pw').value=S.hoursPerWorker;
     document.getElementById('absence').value=(S.absenceRate*100);
     document.getElementById('rot_fixed').value=S.rotFixed;
-    S.hcHours=60;
-    const hInitEl=document.getElementById('hseg-60');
-    if(hInitEl) hInitEl.classList.add('active');
+
 
     setDbStatus('ok','✓ Połączono');
     document.getElementById('nav_hc').textContent='HC: '+getTotalHC();
@@ -572,7 +569,7 @@ async function saveSettings(){
   S.tph.ship=+document.getElementById('tph_ship').value||40;
   S.tph.ib=+document.getElementById('tph_ib').value||29;
   S.hoursPerWorker=+document.getElementById('hours_pw').value||55;
-  if(S.hcHours==null){try{renderHC();}catch(e){}}
+  try{renderHC();}catch(e){}
   S.absenceRate=(+document.getElementById('absence').value||5)/100;
   await sbPost('wms_settings',[{id:'global',data:{
     tph_pp:S.tph.pp,tph_ship:S.tph.ship,tph_ib:S.tph.ib,
@@ -1417,14 +1414,6 @@ function renderSummary(){
 // ═══════════════════════════════════════════════════
 // HEADCOUNT PROJECTION
 // ═══════════════════════════════════════════════════
-function setHCHours(h,el){
-  S.hcHours=h;
-  document.querySelectorAll('#hc_hours_seg .seg-btn').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-  const note=document.getElementById('hc_hours_note');
-  if(note) note.textContent=h>S.hoursPerWorker?`+${h-S.hoursPerWorker}h ⚡`:'';
-  renderHC();
-}
 function setRotMode(m){
   S.rotMode=m;
   document.getElementById('rseg-p').classList.toggle('active',m==='percent');
@@ -1451,7 +1440,6 @@ function renderHC(){
   if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
   const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed||0;
   const usePercent=S.rotMode==='percent';
-  const hrsPerWk=S.hcHours!=null?S.hcHours:S.hoursPerWorker;
 
   function applyRot(hc){
     if(usePercent&&avgRot!=null) return Math.round(hc*(1-avgRot));
@@ -1482,9 +1470,7 @@ function renderHC(){
   for(let i=0;i<weeks.length;i++){
     const wkN=isoWeek(weeks[i].start);
     const s=calcWeek(weeks[i].days);
-    const needed=hrsPerWk===S.hoursPerWorker
-      ? s.totalHC
-      : Math.ceil((s.ppH+s.shipH+s.ibH)/hrsPerWk/(1-S.absenceRate));
+    const needed=s.totalHC;
 
     // Wejścia wpisane ręcznie przez użytkownika
     const entry=S.hcEntries?.[wkN]??0;
@@ -1531,7 +1517,7 @@ function renderHC(){
   <div class="notice n-blue mt-12"><span>ℹ️</span><div class="text-sm">
     Startowy HC: <strong>${startHC}</strong> (WK${firstWkN} z zakładki Agencje) &nbsp;·&nbsp;
     Rotacja: ${usePercent&&avgRot!=null?pct(avgRot)+'/tydz (auto)':rotFixed+' os./tydz (stała)'} &nbsp;·&nbsp;
-    Godziny: ${hrsPerWk}h/tydz
+    Godziny: ${S.hoursPerWorker}h/tydz (z TPH)
   </div></div>`;
 
   el.innerHTML=html;
