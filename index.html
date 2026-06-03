@@ -572,6 +572,7 @@ async function saveSettings(){
   S.tph.ship=+document.getElementById('tph_ship').value||40;
   S.tph.ib=+document.getElementById('tph_ib').value||29;
   S.hoursPerWorker=+document.getElementById('hours_pw').value||55;
+  if(S.hcHours==null){try{renderHC();}catch(e){}}
   S.absenceRate=(+document.getElementById('absence').value||5)/100;
   await sbPost('wms_settings',[{id:'global',data:{
     tph_pp:S.tph.pp,tph_ship:S.tph.ship,tph_ib:S.tph.ib,
@@ -1416,6 +1417,14 @@ function renderSummary(){
 // ═══════════════════════════════════════════════════
 // HEADCOUNT PROJECTION
 // ═══════════════════════════════════════════════════
+function setHCHours(h,el){
+  S.hcHours=h;
+  document.querySelectorAll('#hc_hours_seg .seg-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const note=document.getElementById('hc_hours_note');
+  if(note) note.textContent=h>S.hoursPerWorker?`+${h-S.hoursPerWorker}h ⚡`:'';
+  renderHC();
+}
 function setRotMode(m){
   S.rotMode=m;
   document.getElementById('rseg-p').classList.toggle('active',m==='percent');
@@ -1442,7 +1451,7 @@ function renderHC(){
   if(avgRot!=null) document.getElementById('avg_rot').textContent=pct(avgRot);
   const rotFixed=parseInt(document.getElementById('rot_fixed')?.value)||S.rotFixed||0;
   const usePercent=S.rotMode==='percent';
-  const hrsPerWk=S.hcHours??S.hoursPerWorker;
+  const hrsPerWk=S.hcHours!=null?S.hcHours:S.hoursPerWorker;
 
   function applyRot(hc){
     if(usePercent&&avgRot!=null) return Math.round(hc*(1-avgRot));
