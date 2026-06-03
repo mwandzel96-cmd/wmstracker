@@ -453,8 +453,16 @@ function diffBadge(v){
   return `<span class="badge b-red">${p}%</span>`;
 }
 function getTotalHC(){
+  // Bierz ostatni tydzień który ma faktyczne wartości (nie null/undefined)
+  // Iteruj od najnowszego tygodnia wstecz
+  const wks=[...S.weekCols].reverse();
+  for(const wk of wks){
+    const total=S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]??0),0);
+    if(total>0) return total;
+  }
+  // fallback: ostatni tydzień
   const wk=S.weekCols[S.weekCols.length-1];
-  return S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]||0),0);
+  return S.agencies.reduce((s,a)=>s+(S.agencyHC[a.id]?.[wk]??0),0);
 }
 function setDbStatus(state,msg){
   const el=document.getElementById('db_status');
